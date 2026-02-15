@@ -1,10 +1,12 @@
 package tui
 
+import tea "github.com/charmbracelet/bubbletea"
+
 // MenuItem represents a single entry in a TUI menu.
 type MenuItem struct {
 	Title       string
 	Description string
-	Action      func()
+	Action      func() tea.Cmd
 }
 
 // MainMenu returns the top-level menu items. In the future this will be
@@ -22,6 +24,7 @@ func MainMenu() []MenuItem {
 		{
 			Title:       "Quit",
 			Description: "Exit Config Manager",
+			Action:      func() tea.Cmd { return tea.Quit },
 		},
 	}
 }

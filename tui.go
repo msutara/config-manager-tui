@@ -42,9 +42,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor++
 			}
 		case "enter":
+			if len(m.menuItems) == 0 || m.cursor < 0 || m.cursor >= len(m.menuItems) {
+				break
+			}
 			item := m.menuItems[m.cursor]
 			if item.Action != nil {
-				item.Action()
+				return m, item.Action()
 			}
 		}
 	}

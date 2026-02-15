@@ -10,7 +10,6 @@ to navigate:
 | ↑ / k     | Move cursor up                |
 | ↓ / j     | Move cursor down              |
 | Enter     | Select the highlighted item   |
-| Backspace | Go back to the previous menu  |
 | q         | Quit the TUI                  |
 
 ## Main Menu
@@ -25,7 +24,7 @@ When the `cm` binary starts, the TUI displays a main menu with entries for:
 ## Plugin Submenus
 
 Each plugin provides its own set of menu actions. Selecting a plugin from the
-main menu opens its submenu. Use **Backspace** to return to the main menu.
+main menu opens its submenu.
 
 ## Running
 

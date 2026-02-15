@@ -27,8 +27,8 @@ p.Run()
 - Exported `New()` function is the only public constructor
 - Menu items are built dynamically from the core plugin registry
 - All Go code must pass `golangci-lint run`
-- Agent-readable specifications live in `specs/` (UPPERCASE-KEBAB-CASE filenames)
-- User-facing documentation lives in `docs/` (UPPERCASE-KEBAB-CASE filenames)
+- Agent-readable specifications live in `specs/` (UPPERCASE filenames, e.g. `SPEC.md`)
+- User-facing documentation lives in `docs/` (UPPERCASE filenames, e.g. `USAGE.md`)
 - Never push directly to main — always use feature branches and PRs
 
 ## Validation

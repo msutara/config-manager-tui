@@ -75,7 +75,6 @@ p.Run()
 | ↑ / k     | Move cursor up                |
 | ↓ / j     | Move cursor down              |
 | Enter     | Select menu item              |
-| Backspace | Go back to previous menu      |
 | q         | Quit the TUI                  |
 
 ---
