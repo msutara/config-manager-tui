@@ -37,6 +37,8 @@ func renderMainMenu(items []MenuItem, cursor int) string {
 
 // renderPluginView renders a plugin-specific submenu. This is a stub that will
 // be expanded when plugin integration is implemented.
+//
+//nolint:unused // stub — will be called when plugin submenus are wired
 func renderPluginView(pluginName string, items []MenuItem, cursor int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n  %s\n\n", pluginName)
