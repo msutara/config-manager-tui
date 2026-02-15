@@ -25,9 +25,9 @@ func renderMainMenu(items []MenuItem, cursor int) string {
 	return s
 }
 
-// renderPluginView renders a plugin-specific submenu. This is a stub that will
+// RenderPluginView renders a plugin-specific submenu. This is a stub that will
 // be expanded when plugin integration is implemented.
-func renderPluginView(pluginName string, items []MenuItem, cursor int) string {
+func RenderPluginView(pluginName string, items []MenuItem, cursor int) string {
 	s := fmt.Sprintf("\n  %s\n\n", pluginName)
 	for i, item := range items {
 		indicator := "  "
