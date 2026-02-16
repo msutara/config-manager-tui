@@ -17,14 +17,16 @@ to navigate:
 When the `cm` binary starts, the TUI displays a main menu with entries for:
 
 - **System Info** — view node hostname, OS version, uptime, and resource usage.
-- **Plugins** — one submenu per registered plugin (e.g., Update Management,
-  Network Config).
+- **Plugins** — (planned) plugin management entry intended to expose one submenu
+  per registered plugin (e.g., Update Management, Network Config). Currently a
+  placeholder that does not perform any action when selected.
 - **Quit** — exit the TUI and stop the binary.
 
 ## Plugin Submenus
 
-Each plugin provides its own set of menu actions. Selecting a plugin from the
-main menu opens its submenu.
+Plugin-specific submenus are a planned feature. Each plugin will provide its own
+set of menu actions, and selecting a plugin from the main menu will open its
+submenu once this feature is implemented.
 
 ## Running
 

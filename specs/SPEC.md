@@ -18,7 +18,7 @@ The TUI is a separate Go module imported by the core binary at build time.
   - Provide a top-level menu with one entry per plugin plus system info.
 
 - **User interaction:**
-  - Arrow keys for navigation, Enter to select, Q to quit.
+  - Arrow keys for navigation, Enter to select, q to quit.
   - Plugin-specific submenus for triggering actions.
 
 - **Action triggers:**
@@ -26,7 +26,7 @@ The TUI is a separate Go module imported by the core binary at build time.
   - Display operation results and status in the TUI.
 
 - **Integration:**
-  - Export a public `New()` function returning a `tea.Model`.
+  - Export a public `New()` function returning the concrete `Model` type (which implements `tea.Model`).
   - Core's `main.go` creates a `tea.Program` with this model and calls `Run()`.
 
 ---
@@ -59,7 +59,10 @@ The TUI does **not**:
 The core binary imports this package and runs it as the main loop:
 
 ```go
-import tui "github.com/msutara/config-manager-tui"
+import (
+	tea "github.com/charmbracelet/bubbletea"
+	tui "github.com/msutara/config-manager-tui"
+)
 
 model := tui.New()
 p := tea.NewProgram(model)
