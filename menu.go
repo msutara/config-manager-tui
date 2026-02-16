@@ -7,6 +7,7 @@ type MenuItem struct {
 	Title       string
 	Description string
 	Action      func() tea.Cmd
+	IsQuit      bool // when true, selecting this item exits the TUI
 }
 
 // MainMenu returns the top-level menu items. In the future this will be
@@ -25,6 +26,7 @@ func MainMenu() []MenuItem {
 			Title:       "Quit",
 			Description: "Exit Config Manager",
 			Action:      func() tea.Cmd { return tea.Quit },
+			IsQuit:      true,
 		},
 	}
 }

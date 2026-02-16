@@ -10,7 +10,7 @@ to navigate:
 | ↑ / k     | Move cursor up                |
 | ↓ / j     | Move cursor down              |
 | Enter     | Select the highlighted item   |
-| q         | Quit the TUI                  |
+| q / ctrl+c | Quit the TUI                  |
 
 ## Main Menu
 

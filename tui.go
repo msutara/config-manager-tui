@@ -47,7 +47,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			item := m.menuItems[m.cursor]
 			if item.Action != nil {
-				m.quitting = item.Title == "Quit"
+				m.quitting = item.IsQuit
 				return m, item.Action()
 			}
 		}
