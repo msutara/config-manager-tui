@@ -13,7 +13,10 @@ Config Manager TUI is the terminal user interface for the Config Manager system.
 The core binary imports this package and runs it:
 
 ```go
-import tui "github.com/msutara/config-manager-tui"
+import (
+	tea "github.com/charmbracelet/bubbletea"
+	tui "github.com/msutara/config-manager-tui"
+)
 
 model := tui.New()
 p := tea.NewProgram(model)

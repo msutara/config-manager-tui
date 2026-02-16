@@ -98,7 +98,8 @@ Config Manager
 └── Quit
 ```
 
-Menus are generated dynamically from registered plugins.
+Menus are currently static. Dynamic generation from registered plugins is
+planned for Phase 2.
 
 ---
 
