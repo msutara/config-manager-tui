@@ -19,7 +19,7 @@ func renderHeader() string {
 
 // renderFooter returns the styled footer with key hints.
 func renderFooter() string {
-	return "\n  " + footerStyle.Render("↑/↓: navigate • enter: select • q: quit") + "\n"
+	return "\n  " + footerStyle.Render("↑/↓/k/j: navigate • enter: select • q/ctrl+c: quit") + "\n"
 }
 
 // renderMainMenu renders the list of menu items with a cursor indicator.
@@ -30,7 +30,7 @@ func renderMainMenu(items []MenuItem, cursor int) string {
 		if i == cursor {
 			indicator = "> "
 		}
-		b.WriteString(fmt.Sprintf("  %s%s — %s\n", indicator, item.Title, item.Description))
+		b.WriteString(fmt.Sprintf("  %s%s — %s\n", indicator, item.Title, item.Description)) //nolint:errcheck // strings.Builder.WriteString never fails
 	}
 	return b.String()
 }
@@ -41,14 +41,14 @@ func renderMainMenu(items []MenuItem, cursor int) string {
 //nolint:unused // stub — will be called when plugin submenus are wired
 func renderPluginView(pluginName string, items []MenuItem, cursor int) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("\n  %s\n\n", pluginName))
+	b.WriteString(fmt.Sprintf("\n  %s\n\n", pluginName)) //nolint:errcheck // strings.Builder.WriteString never fails
 	for i, item := range items {
 		indicator := "  "
 		if i == cursor {
 			indicator = "> "
 		}
-		b.WriteString(fmt.Sprintf("  %s%s — %s\n", indicator, item.Title, item.Description))
+		b.WriteString(fmt.Sprintf("  %s%s — %s\n", indicator, item.Title, item.Description)) //nolint:errcheck // strings.Builder.WriteString never fails
 	}
-	b.WriteString(renderFooter())
+	b.WriteString(renderFooter()) //nolint:errcheck // strings.Builder.WriteString never fails
 	return b.String()
 }
