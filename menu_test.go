@@ -24,6 +24,19 @@ func TestMainMenuNoPlugins(t *testing.T) {
 	}
 }
 
+func TestMainMenuEmptySlice(t *testing.T) {
+	items := MainMenu([]PluginInfo{})
+	if len(items) != 2 {
+		t.Fatalf("MainMenu(empty) returned %d items, want 2", len(items))
+	}
+	if items[0].Title != "System Info" {
+		t.Errorf("first: got %q, want %q", items[0].Title, "System Info")
+	}
+	if items[1].Title != "Quit" {
+		t.Errorf("last: got %q, want %q", items[1].Title, "Quit")
+	}
+}
+
 func TestMainMenuWithPlugins(t *testing.T) {
 	plugins := []PluginInfo{
 		{Name: "Update Management", Description: "OS and package updates"},

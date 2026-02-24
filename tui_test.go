@@ -19,6 +19,21 @@ func TestNew(t *testing.T) {
 	}
 }
 
+func TestNewWithPlugins(t *testing.T) {
+	plugins := []PluginInfo{
+		{Name: "Update", Description: "Updates"},
+		{Name: "Network", Description: "Networking"},
+	}
+	m := New(plugins)
+	// System Info + 2 plugins + Quit = 4
+	if len(m.menuItems) != 4 {
+		t.Fatalf("New(2 plugins) menu items: got %d, want 4", len(m.menuItems))
+	}
+	if m.menuItems[1].Title != "Update" {
+		t.Errorf("first plugin: got %q, want %q", m.menuItems[1].Title, "Update")
+	}
+}
+
 func TestInit(t *testing.T) {
 	m := New(nil)
 	cmd := m.Init()
