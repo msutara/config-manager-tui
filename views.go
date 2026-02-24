@@ -8,47 +8,60 @@ import (
 )
 
 var (
-	headerStyle = lipgloss.NewStyle().Bold(true)
-	footerStyle = lipgloss.NewStyle().Faint(true)
+	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
+	footerStyle   = lipgloss.NewStyle().Faint(true)
+	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+	normalStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+	descStyle     = lipgloss.NewStyle().Faint(true)
+	cursorGlyph   = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Render("▸ ")
+	blankGlyph    = "  "
 )
 
 // renderHeader returns the styled header block for the TUI.
 func renderHeader() string {
-	return "\n  " + headerStyle.Render("Config Manager") + "\n\n"
+	title := headerStyle.Render("Config Manager")
+	separator := lipgloss.NewStyle().Faint(true).Render(strings.Repeat("─", 40))
+	return "\n  " + title + "\n  " + separator + "\n\n"
 }
 
 // renderFooter returns the styled footer with key hints.
 func renderFooter() string {
-	return "\n  " + footerStyle.Render("↑/↓/k/j: navigate • enter: select • q/ctrl+c: quit") + "\n"
+	return "\n  " + footerStyle.Render("↑/↓: navigate • enter: select • q: quit") + "\n"
 }
 
 // renderMainMenu renders the list of menu items with a cursor indicator.
 func renderMainMenu(items []MenuItem, cursor int) string {
 	var b strings.Builder
 	for i, item := range items {
-		indicator := "  "
 		if i == cursor {
-			indicator = "> "
+			title := selectedStyle.Render(item.Title)
+			desc := descStyle.Render(item.Description)
+			fmt.Fprintf(&b, "  %s%s  %s\n", cursorGlyph, title, desc) //nolint:errcheck // writes to strings.Builder
+		} else {
+			title := normalStyle.Render(item.Title)
+			desc := descStyle.Render(item.Description)
+			fmt.Fprintf(&b, "  %s%s  %s\n", blankGlyph, title, desc) //nolint:errcheck // writes to strings.Builder
 		}
-		b.WriteString(fmt.Sprintf("  %s%s — %s\n", indicator, item.Title, item.Description)) //nolint:errcheck // strings.Builder.WriteString never fails
 	}
 	return b.String()
 }
 
-// renderPluginView renders a plugin-specific submenu. This is a stub that will
-// be expanded when plugin integration is implemented.
-//
-//nolint:unused // stub — will be called when plugin submenus are wired
+// renderPluginView renders a plugin-specific submenu.
 func renderPluginView(pluginName string, items []MenuItem, cursor int) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("\n  %s\n\n", pluginName)) //nolint:errcheck // strings.Builder.WriteString never fails
+	name := headerStyle.Render(pluginName)
+	fmt.Fprintf(&b, "\n  %s\n\n", name) //nolint:errcheck // writes to strings.Builder
 	for i, item := range items {
-		indicator := "  "
 		if i == cursor {
-			indicator = "> "
+			title := selectedStyle.Render(item.Title)
+			desc := descStyle.Render(item.Description)
+			fmt.Fprintf(&b, "  %s%s  %s\n", cursorGlyph, title, desc) //nolint:errcheck // writes to strings.Builder
+		} else {
+			title := normalStyle.Render(item.Title)
+			desc := descStyle.Render(item.Description)
+			fmt.Fprintf(&b, "  %s%s  %s\n", blankGlyph, title, desc) //nolint:errcheck // writes to strings.Builder
 		}
-		b.WriteString(fmt.Sprintf("  %s%s — %s\n", indicator, item.Title, item.Description)) //nolint:errcheck // strings.Builder.WriteString never fails
 	}
-	b.WriteString(renderFooter()) //nolint:errcheck // strings.Builder.WriteString never fails
+	b.WriteString(renderFooter()) //nolint:errcheck // writes to strings.Builder
 	return b.String()
 }

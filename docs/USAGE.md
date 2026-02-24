@@ -37,5 +37,8 @@ submenu once this feature is implemented.
 ## 5. Running
 
 The TUI is not a standalone binary. It will run as part of the Config Manager
-core once integration is wired (Phase 2). Tests are planned for a future
-iteration (tracked as `tui-tests`).
+core once integration is wired (Phase 2). Run the test suite with:
+
+```bash
+go test -cover ./...
+```
