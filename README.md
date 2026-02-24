@@ -1,40 +1,35 @@
-# Config Manager TUI
+# config-manager-tui
 
-Terminal user interface for Config Manager — a raspi-config style interactive
-menu built with Bubble Tea (Charmbracelet). Compiled into the core binary at
-build time.
+Terminal user interface for
+[Config Manager](https://github.com/msutara/config-manager-core). Provides a
+raspi-config style interactive menu built with Bubble Tea for headless
+Debian-based nodes.
 
 ## Features
 
-- **Raspi-config style menus** — arrow-key navigation, enter to select, q to quit
-- **Dynamic plugin menus** (planned) — will discover plugins from the core plugin registry
-- **Styled with Lip Gloss** — clean, consistent terminal rendering
-- **Elm architecture** — Bubble Tea model with Init/Update/View
-- **Single integration point** — export `New()` for the core binary to call
-
-## Usage
-
-This package is not a standalone binary. The core binary imports it:
-
-```go
-import (
-	tea "github.com/charmbracelet/bubbletea"
-	tui "github.com/msutara/config-manager-tui"
-)
-
-model := tui.New()
-p := tea.NewProgram(model)
-p.Run()
-```
+- Raspi-config style menu navigation (arrow keys, Enter, q to quit)
+- Dynamic plugin menu discovery from the core plugin registry (planned)
+- System info display (planned)
+- Plugin-specific submenus (planned)
 
 ## Documentation
 
-- [Usage Guide](docs/USAGE.md) — TUI navigation and key bindings
+- [Usage Guide](docs/USAGE.md) — navigation and key bindings
+- [Specification](specs/SPEC.md) — TUI specification and menu structure
 
-## Specifications
+## Development
 
-- [SPEC.md](specs/SPEC.md) — TUI specification
+```bash
+# lint
+golangci-lint run
+
+# test
+go test ./...
+```
+
+CI runs automatically on push/PR to `main` via GitHub Actions
+(`.github/workflows/ci.yml`).
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+License not yet finalized.
