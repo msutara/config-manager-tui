@@ -28,6 +28,5 @@ require (
 	golang.org/x/text v0.3.8 // indirect
 )
 
-// config-manager-core is not yet required at the source level. It will be
-// added when plugin registry integration is implemented.
-// require github.com/msutara/config-manager-core v0.0.0
+// config-manager-core is not a direct Go dependency. The TUI receives plugin
+// info via the PluginInfo struct — no import of the core package is needed.

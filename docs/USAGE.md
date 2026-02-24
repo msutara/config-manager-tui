@@ -19,20 +19,21 @@ Use the following keys to navigate:
 
 ## 3. Main Menu
 
-Once integrated into the `cm` binary (Phase 2), the TUI will display a main
-menu with entries for:
+The main menu is built dynamically from the plugins registered in the core
+binary. It always includes:
 
 - **System Info** — (planned) view node hostname, OS version, uptime, and
   resource usage.
-- **Plugins** — (planned) one submenu per registered plugin (e.g., Update
-  Management, Network Config). Currently a static placeholder.
+- **One entry per plugin** — e.g., "Update Management", "Network Config".
+  These appear in the order provided by the core.
 - **Quit** — exit the TUI and stop the binary.
 
 ## 4. Plugin Submenus
 
 Plugin-specific submenus are a planned feature. Each plugin will provide its own
-set of menu actions, and selecting a plugin from the main menu will open its
-submenu once this feature is implemented.
+set of menu actions (e.g., "Check for Updates", "Show Interfaces"), and
+selecting a plugin from the main menu will open its submenu once this is
+implemented.
 
 ## 5. Running
 

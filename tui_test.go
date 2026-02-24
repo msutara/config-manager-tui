@@ -7,9 +7,9 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	m := New()
+	m := New(nil)
 	if len(m.menuItems) == 0 {
-		t.Fatal("New() should return a model with menu items")
+		t.Fatal("New(nil) should return a model with menu items")
 	}
 	if m.cursor != 0 {
 		t.Errorf("cursor: got %d, want 0", m.cursor)
@@ -20,7 +20,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestInit(t *testing.T) {
-	m := New()
+	m := New(nil)
 	cmd := m.Init()
 	if cmd != nil {
 		t.Error("Init() should return nil")
@@ -28,7 +28,7 @@ func TestInit(t *testing.T) {
 }
 
 func TestUpdateKeyDown(t *testing.T) {
-	m := New()
+	m := New(nil)
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
 
 	updated, cmd := m.Update(msg)
@@ -42,19 +42,20 @@ func TestUpdateKeyDown(t *testing.T) {
 }
 
 func TestUpdateKeyUp(t *testing.T) {
-	m := New()
-	m.cursor = 2
+	m := New(nil)
+	m.cursor = len(m.menuItems) - 1
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}
 
 	updated, _ := m.Update(msg)
 	model := updated.(Model)
-	if model.cursor != 1 {
-		t.Errorf("cursor after 'k': got %d, want 1", model.cursor)
+	want := len(m.menuItems) - 2
+	if model.cursor != want {
+		t.Errorf("cursor after 'k': got %d, want %d", model.cursor, want)
 	}
 }
 
 func TestUpdateKeyUpAtTop(t *testing.T) {
-	m := New()
+	m := New(nil)
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}
 
 	updated, _ := m.Update(msg)
@@ -65,7 +66,7 @@ func TestUpdateKeyUpAtTop(t *testing.T) {
 }
 
 func TestUpdateKeyDownAtBottom(t *testing.T) {
-	m := New()
+	m := New(nil)
 	m.cursor = len(m.menuItems) - 1
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
 
@@ -77,7 +78,7 @@ func TestUpdateKeyDownAtBottom(t *testing.T) {
 }
 
 func TestUpdateArrowKeys(t *testing.T) {
-	m := New()
+	m := New(nil)
 
 	// Down arrow
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -105,7 +106,7 @@ func TestUpdateQuit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := New()
+			m := New(nil)
 			updated, cmd := m.Update(tt.msg)
 			model := updated.(Model)
 			if !model.quitting {
@@ -119,7 +120,7 @@ func TestUpdateQuit(t *testing.T) {
 }
 
 func TestUpdateEnterOnQuit(t *testing.T) {
-	m := New()
+	m := New(nil)
 	// Navigate to Quit (last item)
 	m.cursor = len(m.menuItems) - 1
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -133,7 +134,7 @@ func TestUpdateEnterOnQuit(t *testing.T) {
 }
 
 func TestUpdateEnterNoAction(t *testing.T) {
-	m := New()
+	m := New(nil)
 	// First item (System Info) has no action
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model := updated.(Model)
@@ -158,7 +159,7 @@ func TestUpdateEnterEmptyMenu(t *testing.T) {
 }
 
 func TestUpdateUnknownKey(t *testing.T) {
-	m := New()
+	m := New(nil)
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	model := updated.(Model)
 	if model.cursor != 0 {
@@ -170,7 +171,7 @@ func TestUpdateUnknownKey(t *testing.T) {
 }
 
 func TestUpdateNonKeyMsg(t *testing.T) {
-	m := New()
+	m := New(nil)
 	updated, cmd := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	model := updated.(Model)
 	if model.cursor != 0 {
@@ -182,7 +183,7 @@ func TestUpdateNonKeyMsg(t *testing.T) {
 }
 
 func TestViewNormal(t *testing.T) {
-	m := New()
+	m := New(nil)
 	v := m.View()
 	if v == "" {
 		t.Fatal("View() should not return empty string")
@@ -199,7 +200,7 @@ func TestViewNormal(t *testing.T) {
 }
 
 func TestViewQuitting(t *testing.T) {
-	m := New()
+	m := New(nil)
 	m.quitting = true
 	v := m.View()
 	if v != "Goodbye!\n" {

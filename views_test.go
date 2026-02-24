@@ -26,7 +26,7 @@ func TestRenderFooter(t *testing.T) {
 }
 
 func TestRenderMainMenu(t *testing.T) {
-	items := MainMenu()
+	items := MainMenu(nil)
 	result := renderMainMenu(items, 0)
 
 	// Should contain all menu item titles
@@ -38,7 +38,7 @@ func TestRenderMainMenu(t *testing.T) {
 }
 
 func TestRenderMainMenuCursor(t *testing.T) {
-	items := MainMenu()
+	items := MainMenu(nil)
 
 	// Cursor at 0 — first item should have indicator
 	result := renderMainMenu(items, 0)
