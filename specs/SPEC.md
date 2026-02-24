@@ -3,10 +3,11 @@
 ## 1. Purpose
 
 The Config Manager TUI provides a raspi-config style terminal user interface
-for the Config Manager system. It is the primary interactive interface when
-running the `cm` binary.
+for the Config Manager system. Once wired into the core binary (Phase 2), it
+will serve as the primary interactive interface.
 
-The TUI is a separate Go module imported by the core binary at build time.
+The TUI is a separate Go module that will be imported by the core binary at
+build time (Phase 2).
 
 ## 2. Responsibilities
 
@@ -30,11 +31,13 @@ The TUI does **not**:
 
 ## 4. Integration
 
-The TUI is imported by the core binary and run as the main loop:
+The TUI will be imported by the core binary and run as the main loop
+(Phase 2). The integration pattern:
 
 - Export a public `New()` function returning the concrete `Model` type (which
   implements `tea.Model`).
-- Core's `main.go` creates a `tea.Program` with this model and calls `Run()`.
+- Core's `main.go` will create a `tea.Program` with this model and call
+  `Run()`.
 
 ```go
 import (

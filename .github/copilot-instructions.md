@@ -4,8 +4,8 @@
 
 config-manager-tui is the terminal user interface for the Config Manager
 system. It provides a raspi-config style interactive menu built with Bubble Tea
-(Charmbracelet). This package is compiled into the core binary at build time
-and serves as the primary user-facing interface.
+(Charmbracelet). This package will be compiled into the core binary at build
+time and serve as the primary user-facing interface (Phase 2).
 
 Target platforms: Raspbian Bookworm (ARM64), Debian Bullseye slim.
 
@@ -19,7 +19,7 @@ Target platforms: Raspbian Bookworm (ARM64), Debian Bullseye slim.
 
 ## Integration
 
-The core binary imports this package and runs it:
+The core binary will import this package and run it (Phase 2):
 
 ```go
 import (
@@ -40,7 +40,7 @@ p.Run()
 - Menu items are built dynamically from the core plugin registry (planned)
 - Use `log/slog` for all structured logging
 - Specs live in `specs/`, user docs in `docs/`
-- Filenames use UPPERCASE-KEBAB-CASE (e.g., `SPEC.md`, `USAGE.md`)
+- Filenames use UPPERCASE (e.g., `SPEC.md`, `USAGE.md`); use UPPERCASE-KEBAB-CASE for multi-word names (e.g., `PLUGIN-INTERFACE.md`)
 
 ## Specifications
 
