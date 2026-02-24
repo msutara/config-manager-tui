@@ -85,7 +85,15 @@ Config Manager
 Menus are currently static. Dynamic generation from registered plugins is
 planned for Phase 2.
 
-## 8. Future Extensions
+## 8. Visual Style
+
+- Header displays "Config Manager" in bold blue with a separator line.
+- Selected menu item uses a `▸` cursor glyph and bold cyan text.
+- Unselected items use muted white text.
+- Descriptions are rendered in faint style beside each title.
+- Footer shows key hints in faint text.
+
+## 9. Future Extensions
 
 - Confirmation dialogs for destructive actions.
 - Progress indicators for long-running operations.
