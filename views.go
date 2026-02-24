@@ -36,11 +36,11 @@ func renderMainMenu(items []MenuItem, cursor int) string {
 		if i == cursor {
 			title := selectedStyle.Render(item.Title)
 			desc := descStyle.Render(item.Description)
-			fmt.Fprintf(&b, "  %s%s  %s\n", cursorGlyph, title, desc)
+			fmt.Fprintf(&b, "  %s%s  %s\n", cursorGlyph, title, desc) //nolint:errcheck // writes to strings.Builder
 		} else {
 			title := normalStyle.Render(item.Title)
 			desc := descStyle.Render(item.Description)
-			fmt.Fprintf(&b, "  %s%s  %s\n", blankGlyph, title, desc)
+			fmt.Fprintf(&b, "  %s%s  %s\n", blankGlyph, title, desc) //nolint:errcheck // writes to strings.Builder
 		}
 	}
 	return b.String()
@@ -50,18 +50,18 @@ func renderMainMenu(items []MenuItem, cursor int) string {
 func renderPluginView(pluginName string, items []MenuItem, cursor int) string {
 	var b strings.Builder
 	name := headerStyle.Render(pluginName)
-	fmt.Fprintf(&b, "\n  %s\n\n", name)
+	fmt.Fprintf(&b, "\n  %s\n\n", name) //nolint:errcheck // writes to strings.Builder
 	for i, item := range items {
 		if i == cursor {
 			title := selectedStyle.Render(item.Title)
 			desc := descStyle.Render(item.Description)
-			fmt.Fprintf(&b, "  %s%s  %s\n", cursorGlyph, title, desc)
+			fmt.Fprintf(&b, "  %s%s  %s\n", cursorGlyph, title, desc) //nolint:errcheck // writes to strings.Builder
 		} else {
 			title := normalStyle.Render(item.Title)
 			desc := descStyle.Render(item.Description)
-			fmt.Fprintf(&b, "  %s%s  %s\n", blankGlyph, title, desc)
+			fmt.Fprintf(&b, "  %s%s  %s\n", blankGlyph, title, desc) //nolint:errcheck // writes to strings.Builder
 		}
 	}
-	b.WriteString(renderFooter()) //nolint:errcheck // strings.Builder.WriteString never fails
+	b.WriteString(renderFooter()) //nolint:errcheck // writes to strings.Builder
 	return b.String()
 }
