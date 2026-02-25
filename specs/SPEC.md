@@ -12,8 +12,7 @@ build time (Phase 2).
 ## 2. Responsibilities
 
 - **Menu rendering** — render menus with one entry per plugin plus system info.
-  Dynamic discovery from the core plugin registry is planned (Phase 2);
-  currently menus are static.
+  The main menu is built dynamically from `[]PluginInfo` passed to `New()`.
 - **User interaction** — arrow keys for navigation, Enter to select, q to
   quit. Plugin-specific submenus for triggering actions.
 - **Action triggering** — invoke plugin operations when the user selects a
@@ -34,10 +33,11 @@ The TUI does **not**:
 The TUI will be imported by the core binary and run as the main loop
 (Phase 2). The integration pattern:
 
-- Export a public `New()` function returning the concrete `Model` type (which
-  implements `tea.Model`).
-- Core's `main.go` will create a `tea.Program` with this model and call
-  `Run()`.
+- Export a public `New(plugins []PluginInfo)` function returning the concrete
+  `Model` type (which implements `tea.Model`).
+- Core's `main.go` converts its plugin registry to `[]tui.PluginInfo` and
+  passes it to `New()`.
+- Core creates a `tea.Program` with this model and calls `Run()`.
 
 ```go
 import (
@@ -45,7 +45,11 @@ import (
   tui "github.com/msutara/config-manager-tui"
 )
 
-model := tui.New()
+plugins := []tui.PluginInfo{
+  {Name: "Update Management", Description: "OS updates"},
+  {Name: "Network Config", Description: "Network interfaces"},
+}
+model := tui.New(plugins)
 p := tea.NewProgram(model)
 p.Run()
 ```
@@ -71,19 +75,19 @@ p.Run()
 ```text
 Config Manager
 ├── System Info
-├── Plugin: Update Management
+├── Update Management
 │   ├── Check for Updates
 │   ├── Apply Updates
 │   └── Back
-├── Plugin: Network Config
+├── Network Config
 │   ├── Show Interfaces
 │   ├── Edit Config
 │   └── Back
 └── Quit
 ```
 
-Menus are currently static. Dynamic generation from registered plugins is
-planned for Phase 2.
+The main menu is built dynamically from `[]PluginInfo` passed to `New()`.
+Plugin-specific submenus (e.g., "Check for Updates") are a future extension.
 
 ## 8. Visual Style
 

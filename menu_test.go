@@ -2,21 +2,16 @@ package tui
 
 import "testing"
 
-func TestMainMenu(t *testing.T) {
-	items := MainMenu()
-	if len(items) < 3 {
-		t.Fatalf("MainMenu() returned %d items, want at least 3", len(items))
+func TestMainMenuNoPlugins(t *testing.T) {
+	items := MainMenu(nil)
+	if len(items) != 2 {
+		t.Fatalf("MainMenu(nil) returned %d items, want 2 (System Info + Quit)", len(items))
 	}
 
-	// First item should be System Info
 	if items[0].Title != "System Info" {
 		t.Errorf("first item: got %q, want %q", items[0].Title, "System Info")
 	}
-	if items[0].Description == "" {
-		t.Error("System Info should have a description")
-	}
 
-	// Last item should be Quit
 	last := items[len(items)-1]
 	if last.Title != "Quit" {
 		t.Errorf("last item: got %q, want %q", last.Title, "Quit")
@@ -29,8 +24,58 @@ func TestMainMenu(t *testing.T) {
 	}
 }
 
+func TestMainMenuEmptySlice(t *testing.T) {
+	items := MainMenu([]PluginInfo{})
+	if len(items) != 2 {
+		t.Fatalf("MainMenu(empty) returned %d items, want 2", len(items))
+	}
+	if items[0].Title != "System Info" {
+		t.Errorf("first: got %q, want %q", items[0].Title, "System Info")
+	}
+	if items[1].Title != "Quit" {
+		t.Errorf("last: got %q, want %q", items[1].Title, "Quit")
+	}
+}
+
+func TestMainMenuWithPlugins(t *testing.T) {
+	plugins := []PluginInfo{
+		{Name: "Update Management", Description: "OS and package updates"},
+		{Name: "Network Config", Description: "Network interface management"},
+	}
+	items := MainMenu(plugins)
+
+	// System Info + 2 plugins + Quit = 4
+	if len(items) != 4 {
+		t.Fatalf("MainMenu(2 plugins) returned %d items, want 4", len(items))
+	}
+
+	// First is System Info
+	if items[0].Title != "System Info" {
+		t.Errorf("first item: got %q, want %q", items[0].Title, "System Info")
+	}
+
+	// Middle items are plugins in order
+	if items[1].Title != "Update Management" {
+		t.Errorf("second item: got %q, want %q", items[1].Title, "Update Management")
+	}
+	if items[1].Description != "OS and package updates" {
+		t.Errorf("second item desc: got %q", items[1].Description)
+	}
+	if items[2].Title != "Network Config" {
+		t.Errorf("third item: got %q, want %q", items[2].Title, "Network Config")
+	}
+
+	// Last is Quit
+	if items[3].Title != "Quit" {
+		t.Errorf("last item: got %q, want %q", items[3].Title, "Quit")
+	}
+}
+
 func TestMenuItemDescriptions(t *testing.T) {
-	items := MainMenu()
+	plugins := []PluginInfo{
+		{Name: "Test Plugin", Description: "A test plugin"},
+	}
+	items := MainMenu(plugins)
 	for _, item := range items {
 		if item.Title == "" {
 			t.Error("menu item has empty Title")

@@ -13,10 +13,11 @@ type Model struct {
 	quitting  bool
 }
 
-// New returns an initialised TUI model with the default main menu.
-func New() Model {
+// New returns an initialised TUI model. When plugins is provided, the main
+// menu includes one entry per plugin. Pass nil for a static default menu.
+func New(plugins []PluginInfo) Model {
 	return Model{
-		menuItems: MainMenu(),
+		menuItems: MainMenu(plugins),
 	}
 }
 

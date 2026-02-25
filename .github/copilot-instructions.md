@@ -11,9 +11,10 @@ Target platforms: Raspbian Bookworm (ARM64), Debian Bullseye slim.
 
 ## Architecture
 
-- **tui.go** — main Bubble Tea model: `Model` struct with `New()`, `Init()`,
-  `Update()`, `View()`
-- **menu.go** — menu data structures (`MenuItem`) and menu builder functions
+- **tui.go** — main Bubble Tea model: `Model` struct with
+  `New(plugins []PluginInfo)`, `Init()`, `Update()`, `View()`
+- **menu.go** — `PluginInfo` struct, `MenuItem` struct, and
+  `MainMenu(plugins []PluginInfo)` builder
 - **views.go** — view rendering functions: header, footer, main menu, plugin
   views
 
@@ -27,7 +28,10 @@ import (
   tui "github.com/msutara/config-manager-tui"
 )
 
-model := tui.New()
+plugins := []tui.PluginInfo{
+  {Name: "Update Management", Description: "OS updates"},
+}
+model := tui.New(plugins)
 p := tea.NewProgram(model)
 p.Run()
 ```
@@ -36,8 +40,8 @@ p.Run()
 
 - Use Bubble Tea's Elm architecture: `Init()`, `Update()`, `View()`
 - Use Lip Gloss for all styling — no raw ANSI escape codes
-- Exported `New()` function is the only public constructor
-- Menu items are built dynamically from the core plugin registry (planned)
+- Exported `New(plugins []PluginInfo)` is the only public constructor
+- Menu items are built dynamically from `[]PluginInfo` passed by the core
 - Use `log/slog` for all structured logging
 - Specs live in `specs/`, user docs in `docs/`
 - Filenames use UPPERCASE (e.g., `SPEC.md`, `USAGE.md`); use UPPERCASE-KEBAB-CASE for multi-word names (e.g., `PLUGIN-INTERFACE.md`)
