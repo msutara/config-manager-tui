@@ -185,33 +185,33 @@ func (m Model) View() string {
 
 func (m Model) viewMainMenu() string {
 	var b strings.Builder
-	b.WriteString(renderHeader())
-	b.WriteString(renderMainMenu(m.menuItems, m.cursor))
+	b.WriteString(renderHeader())                        //nolint:errcheck // writes to strings.Builder
+	b.WriteString(renderMainMenu(m.menuItems, m.cursor)) //nolint:errcheck // writes to strings.Builder
 	if m.statusMsg != "" {
-		b.WriteString("\n  " + m.statusMsg + "\n")
+		b.WriteString("\n  " + m.statusMsg + "\n") //nolint:errcheck // writes to strings.Builder
 	}
-	b.WriteString(renderFooter())
+	b.WriteString(renderFooter()) //nolint:errcheck // writes to strings.Builder
 	return b.String()
 }
 
 func (m Model) viewSubMenu() string {
 	var b strings.Builder
-	b.WriteString(renderHeader())
-	b.WriteString(renderPluginView(m.screenTitle, m.menuItems, m.cursor))
+	b.WriteString(renderHeader())                                         //nolint:errcheck // writes to strings.Builder
+	b.WriteString(renderPluginView(m.screenTitle, m.menuItems, m.cursor)) //nolint:errcheck // writes to strings.Builder
 	if m.statusMsg != "" {
-		b.WriteString("\n  " + m.statusMsg + "\n")
+		b.WriteString("\n  " + m.statusMsg + "\n") //nolint:errcheck // writes to strings.Builder
 	}
 	return b.String()
 }
 
 func (m Model) viewDetail() string {
 	var b strings.Builder
-	b.WriteString(renderHeader())
+	b.WriteString(renderHeader()) //nolint:errcheck // writes to strings.Builder
 	if m.screenTitle != "" {
-		b.WriteString("  " + headerStyle.Render(m.screenTitle) + "\n\n")
+		b.WriteString("  " + headerStyle.Render(m.screenTitle) + "\n\n") //nolint:errcheck // writes to strings.Builder
 	}
 	for _, line := range strings.Split(m.detail, "\n") {
-		b.WriteString("  " + line + "\n")
+		b.WriteString("  " + line + "\n") //nolint:errcheck // writes to strings.Builder
 	}
 	return b.String()
 }

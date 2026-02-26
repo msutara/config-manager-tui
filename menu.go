@@ -161,7 +161,7 @@ func actionUpdateLogs(api *APIClient) func() tea.Cmd {
 			}
 			var b strings.Builder
 			for _, l := range logs {
-				fmt.Fprintf(&b, "[%s] %s — %s: %s\n", l.Timestamp, l.Action, l.Status, l.Message)
+				fmt.Fprintf(&b, "[%s] %s — %s: %s\n", l.Timestamp, l.Action, l.Status, l.Message) //nolint:errcheck // writes to strings.Builder
 			}
 			return apiResultMsg{detail: b.String()}
 		}
@@ -201,7 +201,7 @@ func actionNetworkInterfaces(api *APIClient) func() tea.Cmd {
 			var b strings.Builder
 			for _, iface := range ifaces {
 				fmt.Fprintf(&b, "%-12s  %-6s  %-8s  %-16s  gw: %s  (%s)\n",
-					iface.Name, iface.State, iface.Type, iface.Address, iface.Gateway, iface.Method)
+					iface.Name, iface.State, iface.Type, iface.Address, iface.Gateway, iface.Method) //nolint:errcheck // writes to strings.Builder
 			}
 			return apiResultMsg{detail: b.String()}
 		}
