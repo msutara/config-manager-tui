@@ -8,9 +8,9 @@ Debian-based nodes.
 ## Features
 
 - Raspi-config style menu navigation (arrow keys, Enter, q to quit)
-- Dynamic plugin menu discovery from the core plugin registry (planned)
-- System info display (planned)
-- Plugin-specific submenus (planned)
+- Dynamic plugin menu discovery from the core plugin registry
+- System info display (hostname, OS, kernel, arch, uptime)
+- Plugin-specific submenus with back-navigation (esc/q/backspace)
 
 ## Documentation
 

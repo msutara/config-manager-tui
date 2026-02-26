@@ -4,23 +4,25 @@
 
 config-manager-tui is the terminal user interface for the Config Manager
 system. It provides a raspi-config style interactive menu built with Bubble Tea
-(Charmbracelet). This package will be compiled into the core binary at build
-time and serve as the primary user-facing interface (Phase 2).
+(Charmbracelet). This package is compiled into the core binary at build time
+and serves as the primary user-facing interface.
 
 Target platforms: Raspbian Bookworm (ARM64), Debian Bullseye slim.
 
 ## Architecture
 
 - **tui.go** — main Bubble Tea model: `Model` struct with
-  `New(plugins []PluginInfo)`, `Init()`, `Update()`, `View()`
-- **menu.go** — `PluginInfo` struct, `MenuItem` struct, and
-  `MainMenu(plugins []PluginInfo)` builder
+  `New(plugins []PluginInfo)`, `NewWithAPI(plugins, apiBaseURL)`,
+  `Init()`, `Update()`, `View()`
+- **menu.go** — `PluginInfo` struct, `MenuItem` struct, action builders,
+  and `MainMenu(plugins []PluginInfo)` backward-compat builder
+- **apiclient.go** — HTTP client for the local CM REST API
 - **views.go** — view rendering functions: header, footer, main menu, plugin
   views
 
 ## Integration
 
-The core binary will import this package and run it (Phase 2):
+The core binary imports this package and runs it:
 
 ```go
 import (
@@ -29,9 +31,10 @@ import (
 )
 
 plugins := []tui.PluginInfo{
-  {Name: "Update Management", Description: "OS updates"},
+  {Name: "update", Description: "OS and package update management"},
+  {Name: "network", Description: "Network interface configuration"},
 }
-model := tui.New(plugins)
+model := tui.NewWithAPI(plugins, "http://localhost:7788")
 p := tea.NewProgram(model)
 p.Run()
 ```
@@ -40,7 +43,8 @@ p.Run()
 
 - Use Bubble Tea's Elm architecture: `Init()`, `Update()`, `View()`
 - Use Lip Gloss for all styling — no raw ANSI escape codes
-- Exported `New(plugins []PluginInfo)` is the only public constructor
+- Exported `New(plugins []PluginInfo)` and `NewWithAPI(plugins, apiBaseURL)`
+  are the public constructors. `New` defaults to `localhost:7788`.
 - Menu items are built dynamically from `[]PluginInfo` passed by the core
 - Use `log/slog` for all structured logging
 - Specs live in `specs/`, user docs in `docs/`

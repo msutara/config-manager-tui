@@ -91,3 +91,16 @@ func TestRenderPluginView(t *testing.T) {
 		t.Error("plugin view should contain cursor indicator")
 	}
 }
+
+func TestRenderSubFooter(t *testing.T) {
+	f := renderSubFooter()
+	if f == "" {
+		t.Fatal("renderSubFooter() should not return empty string")
+	}
+	if !strings.Contains(f, "back") {
+		t.Error("sub-footer should mention back navigation")
+	}
+	if !strings.Contains(f, "backspace") {
+		t.Error("sub-footer should mention backspace key")
+	}
+}
