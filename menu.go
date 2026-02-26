@@ -272,8 +272,8 @@ func formatUptime(seconds int) string {
 	return fmt.Sprintf("%dm", m)
 }
 
-// MainMenu is kept for backward compatibility but delegates to buildMainMenu.
-// Callers that don't need API access can still use it — actions will be nil.
+// MainMenu is a legacy static menu builder kept for backward compatibility.
+// It returns menu items without plugin actions wired; only Quit has an action.
 func MainMenu(plugins []PluginInfo) []MenuItem {
 	items := []MenuItem{
 		{
