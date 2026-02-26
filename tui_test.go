@@ -317,6 +317,25 @@ func TestDetailViewAnyKeyGoesBack(t *testing.T) {
 	}
 }
 
+func TestCtrlCQuitsFromDetailScreen(t *testing.T) {
+	m := New(nil)
+	updated, _ := m.Update(apiResultMsg{detail: "Test detail"})
+	model := updated.(Model)
+	if model.screen != screenDetail {
+		t.Fatalf("screen: got %d, want screenDetail", model.screen)
+	}
+
+	// ctrl+c should quit, not just go back.
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	model = updated.(Model)
+	if !model.quitting {
+		t.Error("ctrl+c from detail should quit")
+	}
+	if cmd == nil {
+		t.Error("ctrl+c should return tea.Quit cmd")
+	}
+}
+
 func TestDetailViewShowsContent(t *testing.T) {
 	m := New(nil)
 	updated, _ := m.Update(apiResultMsg{detail: "Hello World"})

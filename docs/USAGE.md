@@ -10,13 +10,14 @@ serves as the primary interactive interface.
 
 Use the following keys to navigate:
 
-| Key            | Action                              |
-| -------------- | ----------------------------------- |
-| ↑ / k          | Move cursor up                      |
-| ↓ / j          | Move cursor down                    |
-| Enter          | Select the highlighted item         |
-| esc/q/backspace | Go back (in sub-menus/detail views) |
-| q / ctrl+c     | Quit the TUI (from main menu)       |
+| Key             | Action                                            |
+| --------------- | ------------------------------------------------- |
+| ↑ / k           | Move cursor up                                    |
+| ↓ / j           | Move cursor down                                  |
+| Enter           | Select the highlighted item                       |
+| esc/q/backspace | Go back (in sub-menus); any key goes back (detail) |
+| q               | Quit the TUI (from main menu)                     |
+| ctrl+c          | Quit the TUI (from any screen)                    |
 
 ## 3. Main Menu
 

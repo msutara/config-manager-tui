@@ -100,17 +100,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		// In detail view, any key goes back.
+		// ctrl+c always quits, regardless of screen.
+		if msg.Type == tea.KeyCtrlC {
+			m.quitting = true
+			return m, tea.Quit
+		}
+
+		// In detail view, any other key goes back.
 		if m.screen == screenDetail {
 			m.goBack()
 			return m, nil
 		}
 
 		switch msg.String() {
-		case "ctrl+c":
-			m.quitting = true
-			return m, tea.Quit
-
 		case "q":
 			if m.screen == screenSub {
 				if m.loading {

@@ -62,13 +62,14 @@ p.Run()
 
 ## 6. Key Bindings
 
-| Key             | Action                              |
-| --------------- | ----------------------------------- |
-| ↑ / k           | Move cursor up                      |
-| ↓ / j           | Move cursor down                    |
-| Enter           | Select menu item                    |
-| esc/q/backspace | Go back (in sub-menus/detail views) |
-| q / ctrl+c      | Quit the TUI (from main menu)       |
+| Key             | Action                                            |
+| --------------- | ------------------------------------------------- |
+| ↑ / k           | Move cursor up                                    |
+| ↓ / j           | Move cursor down                                  |
+| Enter           | Select menu item                                  |
+| esc/q/backspace | Go back (in sub-menus); any key goes back (detail) |
+| q               | Quit the TUI (from main menu)                     |
+| ctrl+c          | Quit the TUI (from any screen)                    |
 
 ## 7. Menu Structure
 
