@@ -155,7 +155,7 @@ func (c *APIClient) getJSON(path string, out interface{}) error {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort error body
-		return fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+		return fmt.Errorf("GET %s: status %d: %s", path, resp.StatusCode, string(body))
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
@@ -177,7 +177,7 @@ func (c *APIClient) postJSON(path, body string, out interface{}) error {
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 		b, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort error body
-		return fmt.Errorf("API error %d: %s", resp.StatusCode, string(b))
+		return fmt.Errorf("POST %s: status %d: %s", path, resp.StatusCode, string(b))
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
