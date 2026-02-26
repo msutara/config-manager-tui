@@ -26,12 +26,13 @@ type Model struct {
 	cursor    int
 	quitting  bool
 
-	screen      screen
-	screenTitle string     // title for sub-menu / detail view
-	detail      string     // rendered content for detail screen
-	parentItems []MenuItem // saved main menu for returning from sub-menu
-	statusMsg   string     // transient status message
-	loading     bool       // true while an async command is in flight
+	screen       screen
+	screenTitle  string     // title for sub-menu / detail view
+	detail       string     // rendered content for detail screen
+	parentItems  []MenuItem // saved main menu for returning from sub-menu
+	parentCursor int        // saved cursor position for returning from sub-menu
+	statusMsg    string     // transient status message
+	loading      bool       // true while an async command is in flight
 }
 
 // New returns an initialised TUI model with default API URL.
@@ -90,6 +91,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.parentItems = m.menuItems
+		m.parentCursor = m.cursor
 		m.menuItems = msg.items
 		m.cursor = 0
 		m.screen = screenSub
@@ -105,8 +107,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "q", "ctrl+c":
+		case "ctrl+c":
+			m.quitting = true
+			return m, tea.Quit
+
+		case "q":
 			if m.screen == screenSub {
+				if m.loading {
+					break // don't navigate away while API call in flight
+				}
 				m.goBack()
 				return m, nil
 			}
@@ -115,6 +124,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "esc", "backspace":
 			if m.screen == screenSub {
+				if m.loading {
+					break
+				}
 				m.goBack()
 				return m, nil
 			}
@@ -153,7 +165,8 @@ func (m *Model) goBack() {
 	case screenSub:
 		m.menuItems = m.parentItems
 		m.parentItems = nil
-		m.cursor = 0
+		m.cursor = m.parentCursor
+		m.parentCursor = 0
 		m.screen = screenMain
 		m.screenTitle = ""
 	case screenDetail:

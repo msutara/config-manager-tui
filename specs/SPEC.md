@@ -75,13 +75,16 @@ p.Run()
 ```text
 Config Manager
 ├── System Info
-├── Update Management
-│   ├── Check for Updates
-│   ├── Apply Updates
+├── Update Manager
+│   ├── Check Status
+│   ├── Full Update
+│   ├── Security Update
+│   ├── View Logs
 │   └── Back
-├── Network Config
-│   ├── Show Interfaces
-│   ├── Edit Config
+├── Network Manager
+│   ├── List Interfaces
+│   ├── Network Status
+│   ├── DNS Settings
 │   └── Back
 └── Quit
 ```

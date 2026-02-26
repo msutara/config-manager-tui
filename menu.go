@@ -35,7 +35,6 @@ func (m *Model) buildMainMenu() []MenuItem {
 	}
 
 	for _, p := range m.plugins {
-		p := p // capture loop variable
 		switch p.Name {
 		case "update":
 			items = append(items, MenuItem{
@@ -110,15 +109,25 @@ func actionUpdateMenu(api *APIClient) func() tea.Cmd {
 func actionUpdateStatus(api *APIClient) func() tea.Cmd {
 	return func() tea.Cmd {
 		return func() tea.Msg {
-			s, err := api.GetUpdateStatus()
+			updates, err := api.GetUpdateStatus()
 			if err != nil {
 				return apiResultMsg{err: err}
 			}
-			detail := fmt.Sprintf(
-				"Status:     %s\nLast Run:   %s\nPending:    %d packages\nSecurity:   %d patches\nAuto Timer: %s",
-				s.Status, s.LastRun, s.Pending, s.Security, s.AutoTimer,
-			)
-			return apiResultMsg{detail: detail}
+			if len(updates) == 0 {
+				return apiResultMsg{detail: "No pending updates."}
+			}
+			var b strings.Builder
+			secCount := 0
+			for _, u := range updates {
+				flag := " "
+				if u.Security {
+					flag = "!"
+					secCount++
+				}
+				fmt.Fprintf(&b, "  %s %-30s  %s → %s\n", flag, u.Package, u.CurrentVersion, u.NewVersion) //nolint:errcheck // writes to strings.Builder
+			}
+			header := fmt.Sprintf("Pending: %d packages (%d security)\n\n", len(updates), secCount)
+			return apiResultMsg{detail: header + b.String()}
 		}
 	}
 }
@@ -130,7 +139,7 @@ func actionUpdateRunFull(api *APIClient) func() tea.Cmd {
 			if err != nil {
 				return apiResultMsg{err: err}
 			}
-			detail := fmt.Sprintf("Status:  %s\nMessage: %s\nJob ID:  %s", r.Status, r.Message, r.JobID)
+			detail := fmt.Sprintf("Status: %s\nType:   %s", r.Status, r.Type)
 			return apiResultMsg{detail: detail}
 		}
 	}
@@ -143,7 +152,7 @@ func actionUpdateRunSecurity(api *APIClient) func() tea.Cmd {
 			if err != nil {
 				return apiResultMsg{err: err}
 			}
-			detail := fmt.Sprintf("Status:  %s\nMessage: %s\nJob ID:  %s", r.Status, r.Message, r.JobID)
+			detail := fmt.Sprintf("Status: %s\nType:   %s", r.Status, r.Type)
 			return apiResultMsg{detail: detail}
 		}
 	}
@@ -152,18 +161,21 @@ func actionUpdateRunSecurity(api *APIClient) func() tea.Cmd {
 func actionUpdateLogs(api *APIClient) func() tea.Cmd {
 	return func() tea.Cmd {
 		return func() tea.Msg {
-			logs, err := api.GetUpdateLogs()
+			rs, err := api.GetUpdateLogs()
 			if err != nil {
 				return apiResultMsg{err: err}
 			}
-			if len(logs) == 0 {
-				return apiResultMsg{detail: "No update logs available."}
+			if rs.Status == "none" {
+				return apiResultMsg{detail: "No update runs recorded yet."}
 			}
-			var b strings.Builder
-			for _, l := range logs {
-				fmt.Fprintf(&b, "[%s] %s — %s: %s\n", l.Timestamp, l.Action, l.Status, l.Message) //nolint:errcheck // writes to strings.Builder
+			detail := fmt.Sprintf(
+				"Type:     %s\nStatus:   %s\nStarted:  %s\nDuration: %s\nPackages: %d",
+				rs.Type, rs.Status, rs.StartedAt, rs.Duration, rs.Packages,
+			)
+			if rs.Log != "" {
+				detail += "\n\nLog:\n" + rs.Log
 			}
-			return apiResultMsg{detail: b.String()}
+			return apiResultMsg{detail: detail}
 		}
 	}
 }
@@ -200,8 +212,8 @@ func actionNetworkInterfaces(api *APIClient) func() tea.Cmd {
 			}
 			var b strings.Builder
 			for _, iface := range ifaces {
-				fmt.Fprintf(&b, "%-12s  %-6s  %-8s  %-16s  gw: %s  (%s)\n",
-					iface.Name, iface.State, iface.Type, iface.Address, iface.Gateway, iface.Method) //nolint:errcheck // writes to strings.Builder
+				fmt.Fprintf(&b, "%-12s  %-6s  %-17s  %s\n",
+					iface.Name, iface.State, iface.MAC, iface.IP) //nolint:errcheck // writes to strings.Builder
 			}
 			return apiResultMsg{detail: b.String()}
 		}
@@ -216,8 +228,8 @@ func actionNetworkStatus(api *APIClient) func() tea.Cmd {
 				return apiResultMsg{err: err}
 			}
 			detail := fmt.Sprintf(
-				"Hostname:       %s\nDefault GW:     %s\nDNS Servers:    %s\nConnectivity:   %s",
-				s.Hostname, s.DefaultGW, s.DNSServers, s.Connectivity,
+				"Default GW:        %s\nDNS Reachable:     %v\nInternet Reachable: %v",
+				s.DefaultGateway, s.DNSReachable, s.InternetReachable,
 			)
 			return apiResultMsg{detail: detail}
 		}
@@ -232,14 +244,14 @@ func actionNetworkDNS(api *APIClient) func() tea.Cmd {
 				return apiResultMsg{err: err}
 			}
 			servers := "none"
-			if len(dns.Servers) > 0 {
-				servers = strings.Join(dns.Servers, ", ")
+			if len(dns.Nameservers) > 0 {
+				servers = strings.Join(dns.Nameservers, ", ")
 			}
 			search := "none"
 			if len(dns.Search) > 0 {
 				search = strings.Join(dns.Search, ", ")
 			}
-			detail := fmt.Sprintf("DNS Servers:  %s\nSearch:       %s", servers, search)
+			detail := fmt.Sprintf("Nameservers:  %s\nSearch:       %s", servers, search)
 			return apiResultMsg{detail: detail}
 		}
 	}

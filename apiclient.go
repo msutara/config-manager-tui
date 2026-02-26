@@ -19,7 +19,7 @@ type APIClient struct {
 func NewAPIClient(baseURL string) *APIClient {
 	return &APIClient{
 		baseURL: strings.TrimRight(baseURL, "/"),
-		client:  &http.Client{Timeout: 10 * time.Second},
+		client:  &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -32,52 +32,49 @@ type NodeInfo struct {
 	UptimeSeconds int    `json:"uptime_seconds"`
 }
 
-// UpdateStatus represents the response from /api/v1/plugins/update/status.
-type UpdateStatus struct {
-	LastRun   string `json:"last_run"`
-	Status    string `json:"status"`
-	Pending   int    `json:"pending"`
-	Security  int    `json:"security"`
-	AutoTimer string `json:"auto_timer"`
+// PendingUpdate represents a single pending update from /api/v1/plugins/update/status.
+type PendingUpdate struct {
+	Package        string `json:"package"`
+	CurrentVersion string `json:"current_version"`
+	NewVersion     string `json:"new_version"`
+	Security       bool   `json:"security"`
 }
 
 // UpdateRunResult represents the response from POST /api/v1/plugins/update/run.
 type UpdateRunResult struct {
-	Status  string `json:"status"`
-	Message string `json:"message"`
-	JobID   string `json:"job_id"`
+	Status string `json:"status"`
+	Type   string `json:"type"`
 }
 
-// UpdateLogEntry represents a single log entry from /api/v1/plugins/update/logs.
-type UpdateLogEntry struct {
-	Timestamp string `json:"timestamp"`
-	Action    string `json:"action"`
+// RunStatus represents the response from /api/v1/plugins/update/logs.
+type RunStatus struct {
+	Type      string `json:"type"`
 	Status    string `json:"status"`
-	Message   string `json:"message"`
+	StartedAt string `json:"started_at,omitempty"`
+	Duration  string `json:"duration"`
+	Packages  int    `json:"packages"`
+	Log       string `json:"log"`
 }
 
 // NetworkInterface represents a network interface from /api/v1/plugins/network/interfaces.
 type NetworkInterface struct {
-	Name    string `json:"name"`
-	State   string `json:"state"`
-	Type    string `json:"type"`
-	Address string `json:"address"`
-	Gateway string `json:"gateway"`
-	Method  string `json:"method"`
+	Name  string `json:"name"`
+	MAC   string `json:"mac"`
+	IP    string `json:"ip"`
+	State string `json:"state"`
 }
 
 // DNSConfig represents DNS settings from /api/v1/plugins/network/dns.
 type DNSConfig struct {
-	Servers []string `json:"servers"`
-	Search  []string `json:"search"`
+	Nameservers []string `json:"nameservers"`
+	Search      []string `json:"search"`
 }
 
 // NetworkStatus represents /api/v1/plugins/network/status.
 type NetworkStatus struct {
-	Hostname     string `json:"hostname"`
-	DefaultGW    string `json:"default_gateway"`
-	DNSServers   string `json:"dns_servers"`
-	Connectivity string `json:"connectivity"`
+	DefaultGateway    string `json:"default_gateway"`
+	DNSReachable      bool   `json:"dns_reachable"`
+	InternetReachable bool   `json:"internet_reachable"`
 }
 
 // GetNode fetches system information.
@@ -89,20 +86,20 @@ func (c *APIClient) GetNode() (*NodeInfo, error) {
 	return &info, nil
 }
 
-// GetUpdateStatus fetches the update plugin status.
-func (c *APIClient) GetUpdateStatus() (*UpdateStatus, error) {
-	var s UpdateStatus
-	if err := c.getJSON("/api/v1/plugins/update/status", &s); err != nil {
+// GetUpdateStatus fetches pending updates.
+func (c *APIClient) GetUpdateStatus() ([]PendingUpdate, error) {
+	var updates []PendingUpdate
+	if err := c.getJSON("/api/v1/plugins/update/status", &updates); err != nil {
 		return nil, err
 	}
-	return &s, nil
+	return updates, nil
 }
 
 // RunUpdate triggers an update run.
 func (c *APIClient) RunUpdate(mode string) (*UpdateRunResult, error) {
 	payload, err := json.Marshal(struct {
-		Mode string `json:"mode"`
-	}{Mode: mode})
+		Type string `json:"type"`
+	}{Type: mode})
 	if err != nil {
 		return nil, err
 	}
@@ -113,13 +110,13 @@ func (c *APIClient) RunUpdate(mode string) (*UpdateRunResult, error) {
 	return &r, nil
 }
 
-// GetUpdateLogs fetches recent update logs.
-func (c *APIClient) GetUpdateLogs() ([]UpdateLogEntry, error) {
-	var logs []UpdateLogEntry
-	if err := c.getJSON("/api/v1/plugins/update/logs", &logs); err != nil {
+// GetUpdateLogs fetches the last update run status.
+func (c *APIClient) GetUpdateLogs() (*RunStatus, error) {
+	var rs RunStatus
+	if err := c.getJSON("/api/v1/plugins/update/logs", &rs); err != nil {
 		return nil, err
 	}
-	return logs, nil
+	return &rs, nil
 }
 
 // GetNetworkInterfaces lists all network interfaces.
@@ -161,7 +158,10 @@ func (c *APIClient) getJSON(path string, out interface{}) error {
 		return fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
 	}
 
-	return json.NewDecoder(resp.Body).Decode(out)
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("decode %s: %w", path, err)
+	}
+	return nil
 }
 
 func (c *APIClient) postJSON(path, body string, out interface{}) error {
@@ -180,5 +180,8 @@ func (c *APIClient) postJSON(path, body string, out interface{}) error {
 		return fmt.Errorf("API error %d: %s", resp.StatusCode, string(b))
 	}
 
-	return json.NewDecoder(resp.Body).Decode(out)
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("decode %s: %w", path, err)
+	}
+	return nil
 }

@@ -450,14 +450,109 @@ func TestLoadingClearedOnGoBack(t *testing.T) {
 	m.screen = screenSub
 	m.parentItems = m.menuItems
 	m.menuItems = []MenuItem{{Title: "X"}}
+
+	// goBack itself clears loading (when called directly).
 	m.loading = true
+	m.goBack()
+	if m.loading {
+		t.Error("goBack should clear loading")
+	}
+}
+
+func TestBackBlockedWhileLoading(t *testing.T) {
+	m := New(nil)
+	m.screen = screenSub
+	m.parentItems = m.menuItems
+	m.menuItems = []MenuItem{{Title: "X"}}
+	m.loading = true
+
+	// esc while loading should be ignored.
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	model := updated.(Model)
-	if model.loading {
-		t.Error("loading should be false after going back")
+	if model.screen != screenSub {
+		t.Error("esc while loading should stay in sub-menu")
 	}
-	if model.screen != screenMain {
-		t.Errorf("screen after back: got %d, want screenMain", model.screen)
+
+	// q while loading should also be ignored (q = back in sub-menu).
+	model.loading = true
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	model = updated.(Model)
+	if model.screen != screenSub {
+		t.Error("q while loading should stay in sub-menu")
+	}
+}
+
+func TestCtrlCAlwaysQuits(t *testing.T) {
+	m := New(nil)
+	m.screen = screenSub
+	m.parentItems = m.menuItems
+	m.menuItems = []MenuItem{{Title: "X"}}
+	m.loading = true
+
+	// ctrl+c should always quit, even while loading.
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	model := updated.(Model)
+	if !model.quitting {
+		t.Error("ctrl+c should quit even when loading")
+	}
+	if cmd == nil {
+		t.Error("ctrl+c should return a cmd (tea.Quit)")
+	}
+}
+
+func TestParentCursorRestored(t *testing.T) {
+	m := New([]PluginInfo{{Name: "update", Description: "updates"}, {Name: "network", Description: "net"}})
+	// Move cursor to second plugin item (index 2: System Info=0, Update=1, Network=2).
+	m.cursor = 2
+	// Enter sub-menu.
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model := updated.(Model)
+	if cmd == nil {
+		t.Fatal("expected cmd from enter")
+	}
+	// Simulate subMenuMsg.
+	msg := cmd()
+	updated, _ = model.Update(msg)
+	model = updated.(Model)
+	if model.screen != screenSub {
+		t.Fatalf("expected screenSub, got %d", model.screen)
+	}
+	// Go back.
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = updated.(Model)
+	if model.cursor != 2 {
+		t.Errorf("parent cursor: got %d, want 2", model.cursor)
+	}
+}
+
+func TestFormatUptimeZero(t *testing.T) {
+	result := formatUptime(0)
+	if result != "0m" {
+		t.Errorf("formatUptime(0): got %q, want %q", result, "0m")
+	}
+}
+
+func TestFormatUptimeNegative(t *testing.T) {
+	// Negative values are not expected in practice but should not panic.
+	result := formatUptime(-100)
+	if result == "" {
+		t.Error("formatUptime(-100) should return a non-empty string")
+	}
+}
+
+func TestBuildMainMenuUnknownPlugin(t *testing.T) {
+	m := New([]PluginInfo{{Name: "custom-plugin", Description: "A custom one"}})
+	found := false
+	for _, item := range m.menuItems {
+		if item.Title == "custom-plugin" {
+			found = true
+			if item.Action != nil {
+				t.Error("unknown plugin should have nil Action")
+			}
+		}
+	}
+	if !found {
+		t.Error("unknown plugin should appear in menu by name")
 	}
 }
 

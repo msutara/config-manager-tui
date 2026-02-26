@@ -62,20 +62,23 @@ func TestAPIClientGetUpdateStatus(t *testing.T) {
 		if r.URL.Path != "/api/v1/plugins/update/status" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
-		json.NewEncoder(w).Encode(UpdateStatus{
-			Status:  "idle",
-			Pending: 5,
+		json.NewEncoder(w).Encode([]PendingUpdate{
+			{Package: "curl", CurrentVersion: "7.88.1", NewVersion: "7.88.2", Security: true},
+			{Package: "vim", CurrentVersion: "9.0.1", NewVersion: "9.0.2", Security: false},
 		})
 	}))
 	defer srv.Close()
 
 	client := NewAPIClient(srv.URL)
-	s, err := client.GetUpdateStatus()
+	updates, err := client.GetUpdateStatus()
 	if err != nil {
 		t.Fatalf("GetUpdateStatus: %v", err)
 	}
-	if s.Pending != 5 {
-		t.Errorf("pending: got %d, want 5", s.Pending)
+	if len(updates) != 2 {
+		t.Fatalf("updates: got %d, want 2", len(updates))
+	}
+	if !updates[0].Security {
+		t.Error("first update should be security")
 	}
 }
 
@@ -84,10 +87,16 @@ func TestAPIClientRunUpdate(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method: got %s, want POST", r.Method)
 		}
+		var req struct {
+			Type string `json:"type"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		if req.Type != "full" {
+			t.Errorf("type: got %q, want %q", req.Type, "full")
+		}
 		json.NewEncoder(w).Encode(UpdateRunResult{
-			Status:  "started",
-			Message: "update initiated",
-			JobID:   "job-123",
+			Status: "completed",
+			Type:   "full",
 		})
 	}))
 	defer srv.Close()
@@ -97,8 +106,8 @@ func TestAPIClientRunUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunUpdate: %v", err)
 	}
-	if r.JobID != "job-123" {
-		t.Errorf("job_id: got %q, want %q", r.JobID, "job-123")
+	if r.Type != "full" {
+		t.Errorf("type: got %q, want %q", r.Type, "full")
 	}
 }
 
@@ -106,9 +115,8 @@ func TestAPIClientRunUpdateAccepted(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 		json.NewEncoder(w).Encode(UpdateRunResult{
-			Status:  "queued",
-			Message: "update queued",
-			JobID:   "job-456",
+			Status: "completed",
+			Type:   "security",
 		})
 	}))
 	defer srv.Close()
@@ -118,15 +126,15 @@ func TestAPIClientRunUpdateAccepted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunUpdate with 202: %v", err)
 	}
-	if r.JobID != "job-456" {
-		t.Errorf("job_id: got %q, want %q", r.JobID, "job-456")
+	if r.Type != "security" {
+		t.Errorf("type: got %q, want %q", r.Type, "security")
 	}
 }
 
 func TestAPIClientGetNetworkInterfaces(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		json.NewEncoder(w).Encode([]NetworkInterface{
-			{Name: "eth0", State: "up", Address: "192.168.1.10"},
+			{Name: "eth0", State: "up", MAC: "aa:bb:cc:dd:ee:ff", IP: "192.168.1.10"},
 		})
 	}))
 	defer srv.Close()
@@ -147,8 +155,8 @@ func TestAPIClientGetNetworkInterfaces(t *testing.T) {
 func TestAPIClientGetDNS(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		json.NewEncoder(w).Encode(DNSConfig{
-			Servers: []string{"8.8.8.8", "1.1.1.1"},
-			Search:  []string{"local"},
+			Nameservers: []string{"8.8.8.8", "1.1.1.1"},
+			Search:      []string{"local"},
 		})
 	}))
 	defer srv.Close()
@@ -158,17 +166,17 @@ func TestAPIClientGetDNS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetDNS: %v", err)
 	}
-	if len(dns.Servers) != 2 {
-		t.Errorf("servers: got %d, want 2", len(dns.Servers))
+	if len(dns.Nameservers) != 2 {
+		t.Errorf("nameservers: got %d, want 2", len(dns.Nameservers))
 	}
 }
 
 func TestAPIClientGetNetworkStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		json.NewEncoder(w).Encode(NetworkStatus{
-			Hostname:     "testhost",
-			DefaultGW:    "192.168.1.1",
-			Connectivity: "full",
+			DefaultGateway:    "192.168.1.1",
+			DNSReachable:      true,
+			InternetReachable: true,
 		})
 	}))
 	defer srv.Close()
@@ -178,26 +186,29 @@ func TestAPIClientGetNetworkStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNetworkStatus: %v", err)
 	}
-	if s.Connectivity != "full" {
-		t.Errorf("connectivity: got %q, want %q", s.Connectivity, "full")
+	if !s.DNSReachable {
+		t.Error("dns_reachable should be true")
 	}
 }
 
 func TestAPIClientGetUpdateLogs(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		json.NewEncoder(w).Encode([]UpdateLogEntry{
-			{Timestamp: "2026-01-01T00:00:00Z", Action: "full", Status: "success", Message: "ok"},
+		json.NewEncoder(w).Encode(RunStatus{
+			Type:     "full",
+			Status:   "completed",
+			Duration: "2m30s",
+			Packages: 5,
 		})
 	}))
 	defer srv.Close()
 
 	client := NewAPIClient(srv.URL)
-	logs, err := client.GetUpdateLogs()
+	rs, err := client.GetUpdateLogs()
 	if err != nil {
 		t.Fatalf("GetUpdateLogs: %v", err)
 	}
-	if len(logs) != 1 {
-		t.Fatalf("logs: got %d, want 1", len(logs))
+	if rs.Packages != 5 {
+		t.Errorf("packages: got %d, want 5", rs.Packages)
 	}
 }
 
@@ -217,5 +228,19 @@ func TestAPIClientTrailingSlashNormalized(t *testing.T) {
 	}
 	if info.Hostname != "test" {
 		t.Errorf("hostname: got %q, want %q", info.Hostname, "test")
+	}
+}
+
+func TestAPIClientMalformedJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{broken`)) //nolint:errcheck // test helper
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.GetNode()
+	if err == nil {
+		t.Fatal("expected error for malformed JSON")
 	}
 }
