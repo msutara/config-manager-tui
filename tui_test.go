@@ -452,6 +452,9 @@ func TestConnModePersistsAcrossNavigation(t *testing.T) {
 	if model.connMode != ModeConnected {
 		t.Error("connMode should persist after returning to sub")
 	}
+	if !containsStr(model.View(), "connected") {
+		t.Error("sub-menu view should show 'connected' badge after returning from detail")
+	}
 
 	// sub → main (esc)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})

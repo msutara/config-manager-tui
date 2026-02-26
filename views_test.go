@@ -116,6 +116,9 @@ func TestRenderSubFooter(t *testing.T) {
 	if !strings.Contains(f, "backspace") {
 		t.Error("sub-footer should mention backspace key")
 	}
+	if !strings.Contains(f, "standalone") {
+		t.Error("standalone sub-footer should contain 'standalone' badge")
+	}
 }
 
 func TestRenderSubFooterConnected(t *testing.T) {
