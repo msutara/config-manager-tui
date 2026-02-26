@@ -16,12 +16,25 @@ func TestRenderHeader(t *testing.T) {
 }
 
 func TestRenderFooter(t *testing.T) {
-	f := renderFooter()
+	f := renderFooter(ModeStandalone)
 	if f == "" {
 		t.Fatal("renderFooter() should not return empty string")
 	}
 	if !strings.Contains(f, "quit") {
 		t.Error("footer should mention quit key")
+	}
+	if !strings.Contains(f, "standalone") {
+		t.Error("standalone footer should contain 'standalone' badge")
+	}
+}
+
+func TestRenderFooterConnected(t *testing.T) {
+	f := renderFooter(ModeConnected)
+	if !strings.Contains(f, "connected") {
+		t.Error("connected footer should contain 'connected' badge")
+	}
+	if strings.Contains(f, "standalone") {
+		t.Error("connected footer should not contain 'standalone'")
 	}
 }
 
@@ -93,7 +106,7 @@ func TestRenderPluginView(t *testing.T) {
 }
 
 func TestRenderSubFooter(t *testing.T) {
-	f := renderSubFooter()
+	f := renderSubFooter(ModeStandalone)
 	if f == "" {
 		t.Fatal("renderSubFooter() should not return empty string")
 	}
@@ -102,5 +115,12 @@ func TestRenderSubFooter(t *testing.T) {
 	}
 	if !strings.Contains(f, "backspace") {
 		t.Error("sub-footer should mention backspace key")
+	}
+}
+
+func TestRenderSubFooterConnected(t *testing.T) {
+	f := renderSubFooter(ModeConnected)
+	if !strings.Contains(f, "connected") {
+		t.Error("connected sub-footer should contain 'connected' badge")
 	}
 }

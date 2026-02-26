@@ -386,6 +386,79 @@ func TestNewWithAPI(t *testing.T) {
 	if m.api.baseURL != "http://example.com:9999" {
 		t.Errorf("baseURL: got %q, want %q", m.api.baseURL, "http://example.com:9999")
 	}
+	if m.connMode != ModeStandalone {
+		t.Errorf("default connMode: got %d, want ModeStandalone", m.connMode)
+	}
+}
+
+func TestSetConnectionMode(t *testing.T) {
+	m := New(nil)
+	if m.connMode != ModeStandalone {
+		t.Fatalf("default: got %d, want ModeStandalone", m.connMode)
+	}
+	m.SetConnectionMode(ModeConnected)
+	if m.connMode != ModeConnected {
+		t.Errorf("after set: got %d, want ModeConnected", m.connMode)
+	}
+}
+
+func TestViewShowsModeBadge(t *testing.T) {
+	m := New(nil)
+	v := m.View()
+	if !containsStr(v, "standalone") {
+		t.Error("standalone view should contain 'standalone' badge")
+	}
+
+	m.SetConnectionMode(ModeConnected)
+	v = m.View()
+	if !containsStr(v, "connected") {
+		t.Error("connected view should contain 'connected' badge")
+	}
+}
+
+func TestSubMenuViewShowsModeBadge(t *testing.T) {
+	m := New(nil)
+	m.SetConnectionMode(ModeConnected)
+	// Enter sub-menu.
+	updated, _ := m.Update(subMenuMsg{title: "Test", items: []MenuItem{{Title: "X"}}})
+	model := updated.(Model)
+	v := model.View()
+	if !containsStr(v, "connected") {
+		t.Error("sub-menu view should show 'connected' badge")
+	}
+}
+
+func TestConnModePersistsAcrossNavigation(t *testing.T) {
+	m := New(nil)
+	m.SetConnectionMode(ModeConnected)
+
+	// main → sub
+	updated, _ := m.Update(subMenuMsg{title: "Test", items: []MenuItem{{Title: "Act"}}})
+	model := updated.(Model)
+	if model.connMode != ModeConnected {
+		t.Error("connMode should persist after entering sub-menu")
+	}
+
+	// sub → detail
+	updated, _ = model.Update(apiResultMsg{detail: "data"})
+	model = updated.(Model)
+	if model.connMode != ModeConnected {
+		t.Error("connMode should persist after entering detail")
+	}
+
+	// detail → sub (any key)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	model = updated.(Model)
+	if model.connMode != ModeConnected {
+		t.Error("connMode should persist after returning to sub")
+	}
+
+	// sub → main (esc)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = updated.(Model)
+	if model.connMode != ModeConnected {
+		t.Error("connMode should persist after returning to main")
+	}
 }
 
 func TestFormatUptime(t *testing.T) {
