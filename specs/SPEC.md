@@ -11,7 +11,8 @@ The TUI is a separate Go module imported by the core binary at build time.
 ## 2. Responsibilities
 
 - **Menu rendering** — render menus with one entry per plugin plus system info.
-  The main menu is built dynamically from `[]PluginInfo` passed to `New()`.
+  The main menu is built dynamically from `[]PluginInfo` passed to
+  `New()` or `NewWithAPI()`.
 - **User interaction** — arrow keys for navigation, Enter to select, q to
   quit. Plugin-specific submenus for triggering actions.
 - **Action triggering** — invoke plugin operations when the user selects a
@@ -90,7 +91,8 @@ Config Manager
 └── Quit
 ```
 
-The main menu is built dynamically from `[]PluginInfo` passed to `New()`.
+The main menu is built dynamically from `[]PluginInfo` passed to
+`New()` or `NewWithAPI()`.
 Plugin-specific submenus are navigated via Enter and exited with
 esc/q/backspace.
 

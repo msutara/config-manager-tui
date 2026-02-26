@@ -124,7 +124,7 @@ func actionUpdateStatus(api *APIClient) func() tea.Cmd {
 					flag = "!"
 					secCount++
 				}
-				fmt.Fprintf(&b, "  %s %-30s  %s → %s\n", flag, u.Package, u.CurrentVersion, u.NewVersion) //nolint:errcheck // writes to strings.Builder
+				fmt.Fprintf(&b, "%s %-30s  %s → %s\n", flag, u.Package, u.CurrentVersion, u.NewVersion) //nolint:errcheck // writes to strings.Builder
 			}
 			header := fmt.Sprintf("Pending: %d packages (%d security)\n\n", len(updates), secCount)
 			return apiResultMsg{detail: header + b.String()}
