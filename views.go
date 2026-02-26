@@ -15,6 +15,8 @@ var (
 	descStyle     = lipgloss.NewStyle().Faint(true)
 	cursorGlyph   = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Render("▸ ")
 	blankGlyph    = "  "
+	connBadge     = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Render("● connected")
+	standBadge    = lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Render("● standalone")
 )
 
 // renderHeader returns the styled header block for the TUI.
@@ -24,14 +26,23 @@ func renderHeader() string {
 	return "\n  " + title + "\n  " + separator + "\n\n"
 }
 
-// renderFooter returns the styled footer with key hints.
-func renderFooter() string {
-	return "\n  " + footerStyle.Render("↑/↓: navigate • enter: select • q: quit") + "\n"
+// renderFooter returns the styled footer with key hints and connection mode badge.
+func renderFooter(mode ConnectionMode) string {
+	badge := modeBadge(mode)
+	return "\n  " + footerStyle.Render("↑/↓: navigate • enter: select • q: quit") + "  " + badge + "\n"
 }
 
-// renderSubFooter returns a footer with back-navigation hints.
-func renderSubFooter() string {
-	return "\n  " + footerStyle.Render("↑/↓: navigate • enter: select • esc/q/backspace: back") + "\n"
+// renderSubFooter returns a footer with back-navigation hints and connection mode badge.
+func renderSubFooter(mode ConnectionMode) string {
+	badge := modeBadge(mode)
+	return "\n  " + footerStyle.Render("↑/↓: navigate • enter: select • esc/q/backspace: back") + "  " + badge + "\n"
+}
+
+func modeBadge(mode ConnectionMode) string {
+	if mode == ModeConnected {
+		return connBadge
+	}
+	return standBadge
 }
 
 // renderMainMenu renders the list of menu items with a cursor indicator.

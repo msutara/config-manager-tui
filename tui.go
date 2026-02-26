@@ -18,6 +18,16 @@ const (
 	screenDetail               // read-only detail view (press any key to go back)
 )
 
+// ConnectionMode indicates how the TUI is connected to the API.
+type ConnectionMode int
+
+const (
+	// ModeStandalone means the TUI started its own embedded API server.
+	ModeStandalone ConnectionMode = iota
+	// ModeConnected means the TUI is connected to an external running service.
+	ModeConnected
+)
+
 // Model is the main Bubble Tea model for the Config Manager TUI.
 type Model struct {
 	api       *APIClient
@@ -25,6 +35,7 @@ type Model struct {
 	menuItems []MenuItem
 	cursor    int
 	quitting  bool
+	connMode  ConnectionMode
 
 	screen       screen
 	screenTitle  string     // title for sub-menu / detail view
@@ -44,12 +55,18 @@ func New(plugins []PluginInfo) Model {
 // NewWithAPI returns an initialised TUI model using the given API base URL.
 func NewWithAPI(plugins []PluginInfo, apiBaseURL string) Model {
 	m := Model{
-		api:     NewAPIClient(apiBaseURL),
-		plugins: plugins,
-		screen:  screenMain,
+		api:      NewAPIClient(apiBaseURL),
+		plugins:  plugins,
+		screen:   screenMain,
+		connMode: ModeStandalone,
 	}
 	m.menuItems = m.buildMainMenu()
 	return m
+}
+
+// SetConnectionMode sets the TUI's connection mode indicator.
+func (m *Model) SetConnectionMode(mode ConnectionMode) {
+	m.connMode = mode
 }
 
 // Init implements tea.Model.
@@ -206,7 +223,7 @@ func (m Model) viewMainMenu() string {
 	if m.statusMsg != "" {
 		b.WriteString("\n  " + m.statusMsg + "\n") //nolint:errcheck // writes to strings.Builder
 	}
-	b.WriteString(renderFooter()) //nolint:errcheck // writes to strings.Builder
+	b.WriteString(renderFooter(m.connMode)) //nolint:errcheck // writes to strings.Builder
 	return b.String()
 }
 
@@ -217,7 +234,7 @@ func (m Model) viewSubMenu() string {
 	if m.statusMsg != "" {
 		b.WriteString("\n  " + m.statusMsg + "\n") //nolint:errcheck // writes to strings.Builder
 	}
-	b.WriteString(renderSubFooter()) //nolint:errcheck // writes to strings.Builder
+	b.WriteString(renderSubFooter(m.connMode)) //nolint:errcheck // writes to strings.Builder
 	return b.String()
 }
 
