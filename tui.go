@@ -165,6 +165,7 @@ func (m *Model) goBack() {
 	}
 	m.detail = ""
 	m.statusMsg = ""
+	m.loading = false
 }
 
 // View implements tea.Model. It renders the full TUI screen.
@@ -201,6 +202,7 @@ func (m Model) viewSubMenu() string {
 	if m.statusMsg != "" {
 		b.WriteString("\n  " + m.statusMsg + "\n") //nolint:errcheck // writes to strings.Builder
 	}
+	b.WriteString(renderSubFooter()) //nolint:errcheck // writes to strings.Builder
 	return b.String()
 }
 

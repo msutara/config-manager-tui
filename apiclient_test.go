@@ -200,3 +200,22 @@ func TestAPIClientGetUpdateLogs(t *testing.T) {
 		t.Fatalf("logs: got %d, want 1", len(logs))
 	}
 }
+
+func TestAPIClientTrailingSlashNormalized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/node" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(NodeInfo{Hostname: "test"})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL + "/")
+	info, err := client.GetNode()
+	if err != nil {
+		t.Fatalf("GetNode with trailing slash: %v", err)
+	}
+	if info.Hostname != "test" {
+		t.Errorf("hostname: got %q, want %q", info.Hostname, "test")
+	}
+}

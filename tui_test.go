@@ -445,6 +445,22 @@ func TestLoadingClearedOnSubMenuMsg(t *testing.T) {
 	}
 }
 
+func TestLoadingClearedOnGoBack(t *testing.T) {
+	m := New(nil)
+	m.screen = screenSub
+	m.parentItems = m.menuItems
+	m.menuItems = []MenuItem{{Title: "X"}}
+	m.loading = true
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model := updated.(Model)
+	if model.loading {
+		t.Error("loading should be false after going back")
+	}
+	if model.screen != screenMain {
+		t.Errorf("screen after back: got %d, want screenMain", model.screen)
+	}
+}
+
 func containsStr(s, substr string) bool {
 	return len(s) >= len(substr) && searchStr(s, substr)
 }

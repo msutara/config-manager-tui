@@ -18,7 +18,7 @@ type APIClient struct {
 // NewAPIClient returns a client pointing at the given base URL.
 func NewAPIClient(baseURL string) *APIClient {
 	return &APIClient{
-		baseURL: baseURL,
+		baseURL: strings.TrimRight(baseURL, "/"),
 		client:  &http.Client{Timeout: 10 * time.Second},
 	}
 }
@@ -100,9 +100,14 @@ func (c *APIClient) GetUpdateStatus() (*UpdateStatus, error) {
 
 // RunUpdate triggers an update run.
 func (c *APIClient) RunUpdate(mode string) (*UpdateRunResult, error) {
-	body := fmt.Sprintf(`{"mode":"%s"}`, mode)
+	payload, err := json.Marshal(struct {
+		Mode string `json:"mode"`
+	}{Mode: mode})
+	if err != nil {
+		return nil, err
+	}
 	var r UpdateRunResult
-	if err := c.postJSON("/api/v1/plugins/update/run", body, &r); err != nil {
+	if err := c.postJSON("/api/v1/plugins/update/run", string(payload), &r); err != nil {
 		return nil, err
 	}
 	return &r, nil

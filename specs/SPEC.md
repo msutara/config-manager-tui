@@ -3,11 +3,10 @@
 ## 1. Purpose
 
 The Config Manager TUI provides a raspi-config style terminal user interface
-for the Config Manager system. Once wired into the core binary (Phase 2), it
-will serve as the primary interactive interface.
+for the Config Manager system. It runs as part of the core binary and serves
+as the primary interactive interface.
 
-The TUI is a separate Go module that will be imported by the core binary at
-build time (Phase 2).
+The TUI is a separate Go module imported by the core binary at build time.
 
 ## 2. Responsibilities
 
@@ -30,13 +29,13 @@ The TUI does **not**:
 
 ## 4. Integration
 
-The TUI will be imported by the core binary and run as the main loop
-(Phase 2). The integration pattern:
+The TUI is imported by the core binary and runs as the main interactive loop.
+The integration pattern:
 
-- Export a public `New(plugins []PluginInfo)` function returning the concrete
-  `Model` type (which implements `tea.Model`).
+- Export `New(plugins []PluginInfo)` and `NewWithAPI(plugins []PluginInfo, apiBaseURL string)`
+  returning the concrete `Model` type (which implements `tea.Model`).
 - Core's `main.go` converts its plugin registry to `[]tui.PluginInfo` and
-  passes it to `New()`.
+  passes it to `NewWithAPI()` with the configured API base URL.
 - Core creates a `tea.Program` with this model and calls `Run()`.
 
 ```go
@@ -46,10 +45,10 @@ import (
 )
 
 plugins := []tui.PluginInfo{
-  {Name: "Update Management", Description: "OS updates"},
-  {Name: "Network Config", Description: "Network interfaces"},
+  {Name: "update", Description: "OS and package update management"},
+  {Name: "network", Description: "Network interface configuration"},
 }
-model := tui.New(plugins)
+model := tui.NewWithAPI(plugins, "http://localhost:7788")
 p := tea.NewProgram(model)
 p.Run()
 ```
@@ -63,12 +62,13 @@ p.Run()
 
 ## 6. Key Bindings
 
-| Key        | Action                       |
-|------------|------------------------------|
-| ↑ / k      | Move cursor up               |
-| ↓ / j      | Move cursor down             |
-| Enter      | Select menu item             |
-| q / ctrl+c | Quit the TUI                 |
+| Key             | Action                              |
+| --------------- | ----------------------------------- |
+| ↑ / k           | Move cursor up                      |
+| ↓ / j           | Move cursor down                    |
+| Enter           | Select menu item                    |
+| esc/q/backspace | Go back (in sub-menus/detail views) |
+| q / ctrl+c      | Quit the TUI (from main menu)       |
 
 ## 7. Menu Structure
 
@@ -87,7 +87,8 @@ Config Manager
 ```
 
 The main menu is built dynamically from `[]PluginInfo` passed to `New()`.
-Plugin-specific submenus (e.g., "Check for Updates") are a future extension.
+Plugin-specific submenus are navigated via Enter and exited with
+esc/q/backspace.
 
 ## 8. Visual Style
 

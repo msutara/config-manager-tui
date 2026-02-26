@@ -31,7 +31,7 @@ func renderFooter() string {
 
 // renderSubFooter returns a footer with back-navigation hints.
 func renderSubFooter() string {
-	return "\n  " + footerStyle.Render("↑/↓: navigate • enter: select • esc/q: back") + "\n"
+	return "\n  " + footerStyle.Render("↑/↓: navigate • enter: select • esc/q/backspace: back") + "\n"
 }
 
 // renderMainMenu renders the list of menu items with a cursor indicator.
@@ -51,7 +51,7 @@ func renderMainMenu(items []MenuItem, cursor int) string {
 	return b.String()
 }
 
-// renderPluginView renders a plugin-specific submenu.
+// renderPluginView renders a plugin-specific submenu body (without footer).
 func renderPluginView(pluginName string, items []MenuItem, cursor int) string {
 	var b strings.Builder
 	name := headerStyle.Render(pluginName)
@@ -67,6 +67,5 @@ func renderPluginView(pluginName string, items []MenuItem, cursor int) string {
 			fmt.Fprintf(&b, "  %s%s  %s\n", blankGlyph, title, desc) //nolint:errcheck // writes to strings.Builder
 		}
 	}
-	b.WriteString(renderSubFooter()) //nolint:errcheck // writes to strings.Builder
 	return b.String()
 }
