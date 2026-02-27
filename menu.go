@@ -97,10 +97,10 @@ func actionUpdateMenu(api *APIClient) func() tea.Cmd {
 
 			// Show Security Update by default; only hide when the plugin
 			// explicitly reports it as unavailable.  Transient API errors
-			// should not silently remove the menu item.
+			// or missing fields should not silently remove the menu item.
 			showSecurity := true
-			if cfg, err := api.GetUpdateConfig(); err == nil {
-				showSecurity = cfg.SecurityAvailable
+			if cfg, err := api.GetUpdateConfig(); err == nil && cfg.SecurityAvailable != nil {
+				showSecurity = *cfg.SecurityAvailable
 			}
 
 			if showSecurity {

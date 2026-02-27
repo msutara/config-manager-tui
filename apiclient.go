@@ -120,7 +120,7 @@ func (c *APIClient) RunUpdate(mode string) (*UpdateRunResult, error) {
 
 // UpdateConfig models the subset of /api/v1/plugins/update/config used by the TUI.
 type UpdateConfig struct {
-	SecurityAvailable bool `json:"security_available"`
+	SecurityAvailable *bool `json:"security_available"`
 }
 
 // GetUpdateConfig fetches the update plugin configuration.

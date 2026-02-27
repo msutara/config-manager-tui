@@ -320,7 +320,7 @@ func TestAPIClientGetUpdateConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetUpdateConfig: %v", err)
 	}
-	if !cfg.SecurityAvailable {
+	if cfg.SecurityAvailable == nil || !*cfg.SecurityAvailable {
 		t.Error("expected SecurityAvailable=true")
 	}
 }
@@ -346,7 +346,26 @@ func TestAPIClientGetUpdateConfig_Unavailable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetUpdateConfig: %v", err)
 	}
-	if cfg.SecurityAvailable {
+	if cfg.SecurityAvailable == nil || *cfg.SecurityAvailable {
 		t.Error("expected SecurityAvailable=false")
+	}
+}
+
+func TestAPIClientGetUpdateConfig_MissingField(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Older server or empty response — field absent.
+		json.NewEncoder(w).Encode(map[string]any{
+			"auto_security_updates": true,
+		})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	cfg, err := client.GetUpdateConfig()
+	if err != nil {
+		t.Fatalf("GetUpdateConfig: %v", err)
+	}
+	if cfg.SecurityAvailable != nil {
+		t.Errorf("expected SecurityAvailable=nil for missing field, got %v", *cfg.SecurityAvailable)
 	}
 }
