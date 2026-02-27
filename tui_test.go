@@ -34,6 +34,19 @@ func TestNewWithPlugins(t *testing.T) {
 	}
 }
 
+func TestNewWithAuth(t *testing.T) {
+	m := NewWithAuth(nil, "http://localhost:9999", "my-token")
+	if m.api == nil {
+		t.Fatal("api client should not be nil")
+	}
+	if m.api.token != "my-token" {
+		t.Errorf("token: got %q, want %q", m.api.token, "my-token")
+	}
+	if m.api.baseURL != "http://localhost:9999" {
+		t.Errorf("baseURL: got %q, want %q", m.api.baseURL, "http://localhost:9999")
+	}
+}
+
 func TestInit(t *testing.T) {
 	m := New(nil)
 	cmd := m.Init()

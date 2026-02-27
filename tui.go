@@ -54,8 +54,14 @@ func New(plugins []PluginInfo) Model {
 
 // NewWithAPI returns an initialised TUI model using the given API base URL.
 func NewWithAPI(plugins []PluginInfo, apiBaseURL string) Model {
+	return NewWithAuth(plugins, apiBaseURL, "")
+}
+
+// NewWithAuth returns an initialised TUI model that sends a Bearer token
+// with every API request. Pass empty token to disable auth.
+func NewWithAuth(plugins []PluginInfo, apiBaseURL, token string) Model {
 	m := Model{
-		api:      NewAPIClient(apiBaseURL),
+		api:      NewAPIClientWithToken(apiBaseURL, token),
 		plugins:  plugins,
 		screen:   screenMain,
 		connMode: ModeStandalone,

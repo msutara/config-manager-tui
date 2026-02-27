@@ -12,13 +12,21 @@ import (
 // APIClient calls the local CM REST API.
 type APIClient struct {
 	baseURL string
+	token   string
 	client  *http.Client
 }
 
 // NewAPIClient returns a client pointing at the given base URL.
 func NewAPIClient(baseURL string) *APIClient {
+	return NewAPIClientWithToken(baseURL, "")
+}
+
+// NewAPIClientWithToken returns a client that sends a Bearer token with
+// every request (except unauthenticated endpoints handled server-side).
+func NewAPIClientWithToken(baseURL, token string) *APIClient {
 	return &APIClient{
 		baseURL: strings.TrimRight(baseURL, "/"),
+		token:   token,
 		client:  &http.Client{Timeout: 30 * time.Second},
 	}
 }
@@ -147,7 +155,14 @@ func (c *APIClient) GetNetworkStatus() (*NetworkStatus, error) {
 }
 
 func (c *APIClient) getJSON(path string, out interface{}) error {
-	resp, err := c.client.Get(c.baseURL + path)
+	req, err := http.NewRequest(http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
@@ -165,11 +180,15 @@ func (c *APIClient) getJSON(path string, out interface{}) error {
 }
 
 func (c *APIClient) postJSON(path, body string, out interface{}) error {
-	resp, err := c.client.Post(
-		c.baseURL+path,
-		"application/json",
-		strings.NewReader(body),
-	)
+	req, err := http.NewRequest(http.MethodPost, c.baseURL+path, strings.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
