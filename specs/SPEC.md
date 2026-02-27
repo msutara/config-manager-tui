@@ -80,7 +80,7 @@ Config Manager
 ├── Update Manager
 │   ├── Check Status
 │   ├── Full Update
-│   ├── Security Update
+│   ├── Security Update  *(only when distro has a separate security source)*
 │   ├── View Logs
 │   └── Back
 ├── Network Manager

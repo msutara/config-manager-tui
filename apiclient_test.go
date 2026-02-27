@@ -330,6 +330,9 @@ func TestAPIClientGetUpdateConfig_Unavailable(t *testing.T) {
 		if r.URL.Path != "/api/v1/plugins/update/config" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
+		if r.Method != http.MethodGet {
+			t.Errorf("unexpected method: %s", r.Method)
+		}
 		json.NewEncoder(w).Encode(map[string]any{
 			"auto_security_updates": true,
 			"security_available":    false,
