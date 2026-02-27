@@ -35,7 +35,7 @@ binary. It always includes:
 Selecting a plugin from the main menu opens its submenu. Each plugin provides
 its own set of menu actions:
 
-- **Update Manager** — Check Status, Full Update, Security Update, View Logs
+- **Update Manager** — Check Status, Full Update, Security Update (when available), View Logs
 - **Network Manager** — List Interfaces, Network Status, DNS Settings
 
 Each submenu includes a "Back" item to return to the main menu. You can also

@@ -298,3 +298,74 @@ func TestAPIClientPostWithToken(t *testing.T) {
 		t.Errorf("Authorization: got %q, want %q", gotAuth, "Bearer post-secret")
 	}
 }
+
+func TestAPIClientGetUpdateConfig(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/plugins/update/config" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("unexpected method: %s", r.Method)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"auto_security_updates": true,
+			"security_available":    true,
+			"schedule":              "0 3 * * *",
+		})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	cfg, err := client.GetUpdateConfig()
+	if err != nil {
+		t.Fatalf("GetUpdateConfig: %v", err)
+	}
+	if cfg.SecurityAvailable == nil || !*cfg.SecurityAvailable {
+		t.Error("expected SecurityAvailable=true")
+	}
+}
+
+func TestAPIClientGetUpdateConfig_Unavailable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/plugins/update/config" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("unexpected method: %s", r.Method)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"auto_security_updates": true,
+			"security_available":    false,
+			"schedule":              "0 3 * * *",
+		})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	cfg, err := client.GetUpdateConfig()
+	if err != nil {
+		t.Fatalf("GetUpdateConfig: %v", err)
+	}
+	if cfg.SecurityAvailable == nil || *cfg.SecurityAvailable {
+		t.Error("expected SecurityAvailable=false")
+	}
+}
+
+func TestAPIClientGetUpdateConfig_MissingField(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Older server or empty response — field absent.
+		json.NewEncoder(w).Encode(map[string]any{
+			"auto_security_updates": true,
+		})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	cfg, err := client.GetUpdateConfig()
+	if err != nil {
+		t.Fatalf("GetUpdateConfig: %v", err)
+	}
+	if cfg.SecurityAvailable != nil {
+		t.Errorf("expected SecurityAvailable=nil for missing field, got %v", *cfg.SecurityAvailable)
+	}
+}

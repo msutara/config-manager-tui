@@ -90,17 +90,36 @@ func actionSystemInfo(api *APIClient) func() tea.Cmd {
 func actionUpdateMenu(api *APIClient) func() tea.Cmd {
 	return func() tea.Cmd {
 		return func() tea.Msg {
+			items := []MenuItem{
+				{Title: "Check Status", Description: "View update status", Action: actionUpdateStatus(api)},
+				{Title: "Full Update", Description: "Run full system update", Action: actionUpdateRunFull(api)},
+			}
+
+			// Show Security Update by default; only hide when the plugin
+			// explicitly reports it as unavailable.  Transient API errors
+			// or missing fields should not silently remove the menu item.
+			showSecurity := true
+			if cfg, err := api.GetUpdateConfig(); err == nil && cfg.SecurityAvailable != nil {
+				showSecurity = *cfg.SecurityAvailable
+			}
+
+			if showSecurity {
+				items = append(items, MenuItem{
+					Title: "Security Update", Description: "Apply security patches only",
+					Action: actionUpdateRunSecurity(api),
+				})
+			}
+
+			items = append(items,
+				MenuItem{Title: "View Logs", Description: "Recent update activity", Action: actionUpdateLogs(api)},
+				MenuItem{Title: "Back", Description: "Return to main menu", Action: func() tea.Cmd {
+					return func() tea.Msg { return subMenuMsg{} }
+				}},
+			)
+
 			return subMenuMsg{
 				title: "Update Manager",
-				items: []MenuItem{
-					{Title: "Check Status", Description: "View update status", Action: actionUpdateStatus(api)},
-					{Title: "Full Update", Description: "Run full system update", Action: actionUpdateRunFull(api)},
-					{Title: "Security Update", Description: "Apply security patches only", Action: actionUpdateRunSecurity(api)},
-					{Title: "View Logs", Description: "Recent update activity", Action: actionUpdateLogs(api)},
-					{Title: "Back", Description: "Return to main menu", Action: func() tea.Cmd {
-						return func() tea.Msg { return subMenuMsg{} }
-					}},
-				},
+				items: items,
 			}
 		}
 	}

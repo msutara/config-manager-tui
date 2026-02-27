@@ -118,6 +118,20 @@ func (c *APIClient) RunUpdate(mode string) (*UpdateRunResult, error) {
 	return &r, nil
 }
 
+// UpdateConfig models the subset of /api/v1/plugins/update/config used by the TUI.
+type UpdateConfig struct {
+	SecurityAvailable *bool `json:"security_available"`
+}
+
+// GetUpdateConfig fetches the update plugin configuration.
+func (c *APIClient) GetUpdateConfig() (*UpdateConfig, error) {
+	var cfg UpdateConfig
+	if err := c.getJSON("/api/v1/plugins/update/config", &cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
 // GetUpdateLogs fetches the last update run status.
 func (c *APIClient) GetUpdateLogs() (*RunStatus, error) {
 	var rs RunStatus
