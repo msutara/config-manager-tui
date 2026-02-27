@@ -118,7 +118,7 @@ func (c *APIClient) RunUpdate(mode string) (*UpdateRunResult, error) {
 	return &r, nil
 }
 
-// UpdateConfig represents the response from /api/v1/plugins/update/config.
+// UpdateConfig models the subset of /api/v1/plugins/update/config used by the TUI.
 type UpdateConfig struct {
 	SecurityAvailable bool `json:"security_available"`
 }
