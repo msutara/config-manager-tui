@@ -298,3 +298,43 @@ func TestAPIClientPostWithToken(t *testing.T) {
 		t.Errorf("Authorization: got %q, want %q", gotAuth, "Bearer post-secret")
 	}
 }
+
+func TestAPIClientGetUpdateConfig(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"auto_security_updates": true,
+			"security_available":    true,
+			"schedule":              "0 3 * * *",
+		})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	cfg, err := client.GetUpdateConfig()
+	if err != nil {
+		t.Fatalf("GetUpdateConfig: %v", err)
+	}
+	if !cfg.SecurityAvailable {
+		t.Error("expected SecurityAvailable=true")
+	}
+}
+
+func TestAPIClientGetUpdateConfig_Unavailable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"auto_security_updates": true,
+			"security_available":    false,
+			"schedule":              "0 3 * * *",
+		})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	cfg, err := client.GetUpdateConfig()
+	if err != nil {
+		t.Fatalf("GetUpdateConfig: %v", err)
+	}
+	if cfg.SecurityAvailable {
+		t.Error("expected SecurityAvailable=false")
+	}
+}
