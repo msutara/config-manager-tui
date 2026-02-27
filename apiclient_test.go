@@ -244,3 +244,57 @@ func TestAPIClientMalformedJSON(t *testing.T) {
 		t.Fatal("expected error for malformed JSON")
 	}
 }
+
+func TestAPIClientWithTokenSendsBearer(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		json.NewEncoder(w).Encode(NodeInfo{Hostname: "auth-test"})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClientWithToken(srv.URL, "test-secret")
+	_, err := client.GetNode()
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	if gotAuth != "Bearer test-secret" {
+		t.Errorf("Authorization: got %q, want %q", gotAuth, "Bearer test-secret")
+	}
+}
+
+func TestAPIClientWithoutTokenOmitsHeader(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		json.NewEncoder(w).Encode(NodeInfo{Hostname: "no-auth"})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.GetNode()
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	if gotAuth != "" {
+		t.Errorf("Authorization: got %q, want empty", gotAuth)
+	}
+}
+
+func TestAPIClientPostWithToken(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		json.NewEncoder(w).Encode(UpdateRunResult{Status: "ok", Type: "full"})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClientWithToken(srv.URL, "post-secret")
+	_, err := client.RunUpdate("full")
+	if err != nil {
+		t.Fatalf("RunUpdate: %v", err)
+	}
+	if gotAuth != "Bearer post-secret" {
+		t.Errorf("Authorization: got %q, want %q", gotAuth, "Bearer post-secret")
+	}
+}
