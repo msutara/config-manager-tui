@@ -122,7 +122,7 @@ func sanitizeText(s string) string {
 	b.Grow(len(s))
 	for _, r := range s {
 		if r >= 0x20 && r != 0x7F {
-			_, _ = b.WriteRune(r)
+			_, _ = b.WriteRune(r) //nolint:errcheck // strings.Builder.WriteRune never fails
 		}
 	}
 	return b.String()
@@ -135,7 +135,7 @@ func sanitizeBody(s string) string {
 	b.Grow(len(s))
 	for _, r := range s {
 		if r == '\n' || r == '\t' || (r >= 0x20 && r != 0x7F) {
-			_, _ = b.WriteRune(r)
+			_, _ = b.WriteRune(r) //nolint:errcheck // strings.Builder.WriteRune never fails
 		}
 	}
 	return b.String()
@@ -222,10 +222,10 @@ func actionGenericPlugin(api *APIClient, p PluginInfo) func() tea.Cmd {
 	}
 }
 
-func actionGenericGet(api *APIClient, path string) func() tea.Cmd {
+func actionGenericGet(api *APIClient, apiPath string) func() tea.Cmd {
 	return func() tea.Cmd {
 		return func() tea.Msg {
-			body, err := api.GetRaw(path)
+			body, err := api.GetRaw(apiPath)
 			if err != nil {
 				return apiResultMsg{err: err}
 			}
@@ -239,10 +239,10 @@ func actionGenericGet(api *APIClient, path string) func() tea.Cmd {
 	}
 }
 
-func actionGenericPost(api *APIClient, path, description string) func() tea.Cmd {
+func actionGenericPost(api *APIClient, apiPath, description string) func() tea.Cmd {
 	return func() tea.Cmd {
 		return func() tea.Msg {
-			_, err := api.PostRaw(path)
+			_, err := api.PostRaw(apiPath)
 			if err != nil {
 				return apiResultMsg{err: err}
 			}
