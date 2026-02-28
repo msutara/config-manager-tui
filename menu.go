@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -87,7 +88,8 @@ func actionSystemInfo(api *APIClient) func() tea.Cmd {
 			uptime := formatUptime(info.UptimeSeconds)
 			detail := fmt.Sprintf(
 				"Hostname:  %s\nOS:        %s\nKernel:    %s\nArch:      %s\nUptime:    %s",
-				info.Hostname, info.OS, info.Kernel, info.Arch, uptime,
+				sanitizeText(info.Hostname), sanitizeText(info.OS),
+				sanitizeText(info.Kernel), sanitizeText(info.Arch), uptime,
 			)
 			return apiResultMsg{detail: detail}
 		}
@@ -228,11 +230,9 @@ func actionGenericGet(api *APIClient, path string) func() tea.Cmd {
 				return apiResultMsg{err: err}
 			}
 			// Try to pretty-print JSON; fall back to raw.
-			var raw any
-			if json.Unmarshal([]byte(body), &raw) == nil {
-				if pretty, err := json.MarshalIndent(raw, "", "  "); err == nil {
-					body = string(pretty)
-				}
+			var buf bytes.Buffer
+			if json.Indent(&buf, []byte(body), "", "  ") == nil {
+				body = buf.String()
 			}
 			return apiResultMsg{detail: sanitizeBody(body)}
 		}

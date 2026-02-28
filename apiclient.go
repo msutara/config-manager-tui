@@ -120,18 +120,18 @@ type NetworkStatus struct {
 // messages, preventing terminal injection and oversized output.
 func truncateBody(b []byte) string {
 	const maxLen = 200
-	s := strings.Map(func(r rune) rune {
-		if r >= 0x20 && r != 0x7F {
-			return r
+	s := string(b)
+	runes := make([]rune, 0, maxLen)
+	for _, r := range s {
+		if r < 0x20 || r == 0x7F {
+			continue // strip control characters
 		}
-		return -1 // strip control characters
-	}, string(b))
-	// Truncate at rune boundary to avoid invalid UTF-8.
-	runes := []rune(s)
-	if len(runes) <= maxLen {
-		return s
+		runes = append(runes, r)
+		if len(runes) == maxLen {
+			return string(runes) + "..."
+		}
 	}
-	return string(runes[:maxLen]) + "..."
+	return string(runes)
 }
 
 // GetPlugins fetches the plugin registry.
@@ -144,8 +144,11 @@ func (c *APIClient) GetPlugins() ([]PluginRegistryEntry, error) {
 }
 
 // GetRaw fetches an arbitrary endpoint and returns its raw body string.
-func (c *APIClient) GetRaw(path string) (string, error) {
-	req, err := http.NewRequest(http.MethodGet, c.baseURL+path, nil)
+func (c *APIClient) GetRaw(apiPath string) (string, error) {
+	if !strings.HasPrefix(apiPath, "/") {
+		apiPath = "/" + apiPath
+	}
+	req, err := http.NewRequest(http.MethodGet, c.baseURL+apiPath, nil)
 	if err != nil {
 		return "", fmt.Errorf("build request: %w", err)
 	}
@@ -160,17 +163,20 @@ func (c *APIClient) GetRaw(path string) (string, error) {
 
 	body, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
-		return "", fmt.Errorf("read body %s: %w", path, readErr)
+		return "", fmt.Errorf("read body %s: %w", apiPath, readErr)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GET %s: status %d: %s", path, resp.StatusCode, truncateBody(body))
+		return "", fmt.Errorf("GET %s: status %d: %s", apiPath, resp.StatusCode, truncateBody(body))
 	}
 	return string(body), nil
 }
 
 // PostRaw sends a POST to an arbitrary endpoint and returns the status message.
-func (c *APIClient) PostRaw(path string) (string, error) {
-	req, err := http.NewRequest(http.MethodPost, c.baseURL+path, nil)
+func (c *APIClient) PostRaw(apiPath string) (string, error) {
+	if !strings.HasPrefix(apiPath, "/") {
+		apiPath = "/" + apiPath
+	}
+	req, err := http.NewRequest(http.MethodPost, c.baseURL+apiPath, nil)
 	if err != nil {
 		return "", fmt.Errorf("build request: %w", err)
 	}
@@ -185,10 +191,10 @@ func (c *APIClient) PostRaw(path string) (string, error) {
 
 	body, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
-		return "", fmt.Errorf("read body %s: %w", path, readErr)
+		return "", fmt.Errorf("read body %s: %w", apiPath, readErr)
 	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
-		return "", fmt.Errorf("POST %s: status %d: %s", path, resp.StatusCode, truncateBody(body))
+		return "", fmt.Errorf("POST %s: status %d: %s", apiPath, resp.StatusCode, truncateBody(body))
 	}
 	return string(body), nil
 }

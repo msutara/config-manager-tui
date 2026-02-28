@@ -338,6 +338,27 @@ func TestAPIClientRunUpdateAccepted(t *testing.T) {
 	}
 }
 
+func TestAPIClientGetUpdateLogs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(RunStatus{
+			Type:     "full",
+			Status:   "completed",
+			Duration: "2m30s",
+			Packages: 5,
+		})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	rs, err := client.GetUpdateLogs()
+	if err != nil {
+		t.Fatalf("GetUpdateLogs: %v", err)
+	}
+	if rs.Packages != 5 {
+		t.Errorf("packages: got %d, want 5", rs.Packages)
+	}
+}
+
 // ---------- Network plugin API tests ----------
 
 func TestAPIClientGetNetworkInterfaces(t *testing.T) {
@@ -397,27 +418,6 @@ func TestAPIClientGetNetworkStatus(t *testing.T) {
 	}
 	if !s.DNSReachable {
 		t.Error("dns_reachable should be true")
-	}
-}
-
-func TestAPIClientGetUpdateLogs(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		json.NewEncoder(w).Encode(RunStatus{
-			Type:     "full",
-			Status:   "completed",
-			Duration: "2m30s",
-			Packages: 5,
-		})
-	}))
-	defer srv.Close()
-
-	client := NewAPIClient(srv.URL)
-	rs, err := client.GetUpdateLogs()
-	if err != nil {
-		t.Fatalf("GetUpdateLogs: %v", err)
-	}
-	if rs.Packages != 5 {
-		t.Errorf("packages: got %d, want 5", rs.Packages)
 	}
 }
 
