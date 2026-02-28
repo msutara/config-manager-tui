@@ -20,6 +20,8 @@ func TestTruncateBody(t *testing.T) {
 		{"strips control chars", "err\x00or\x1b[31m", "error[31m"},
 		{"strips del", "abc\x7fdef", "abcdef"},
 		{"truncates long", strings.Repeat("x", 300), strings.Repeat("x", 200) + "..."},
+		{"multibyte no truncation", strings.Repeat("é", 101), strings.Repeat("é", 101)},
+		{"multibyte truncates", strings.Repeat("é", 250), strings.Repeat("é", 200) + "..."},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -126,15 +126,12 @@ func truncateBody(b []byte) string {
 		}
 		return -1 // strip control characters
 	}, string(b))
-	if len(s) <= maxLen {
+	// Truncate at rune boundary to avoid invalid UTF-8.
+	runes := []rune(s)
+	if len(runes) <= maxLen {
 		return s
 	}
-	// Truncate at rune boundary to avoid invalid UTF-8.
-	truncated := []rune(s)
-	if len(truncated) > maxLen {
-		truncated = truncated[:maxLen]
-	}
-	return string(truncated) + "..."
+	return string(runes[:maxLen]) + "..."
 }
 
 // GetPlugins fetches the plugin registry.

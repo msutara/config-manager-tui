@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -44,19 +46,20 @@ func (m *Model) buildMainMenu() []MenuItem {
 		case "update":
 			items = append(items, MenuItem{
 				Title:       "Update Manager",
-				Description: p.Description,
+				Description: sanitizeText(p.Description),
 				Action:      actionUpdateMenu(api),
 			})
 		case "network":
 			items = append(items, MenuItem{
 				Title:       "Network Manager",
-				Description: p.Description,
+				Description: sanitizeText(p.Description),
 				Action:      actionNetworkMenu(api),
 			})
 		default:
+			safeName := sanitizeText(p.Name)
 			items = append(items, MenuItem{
-				Title:       strings.Title(p.Name), //nolint:staticcheck // fine for ASCII plugin names
-				Description: p.Description,
+				Title:       titleCase(safeName),
+				Description: sanitizeText(p.Description),
 				Action:      actionGenericPlugin(api, p),
 			})
 		}
@@ -92,6 +95,23 @@ func actionSystemInfo(api *APIClient) func() tea.Cmd {
 }
 
 // --- Generic Plugin Sub-Menu ---
+
+// titleCase converts a hyphen-separated name like "my-plugin" to "My Plugin".
+func titleCase(s string) string {
+	if s == "" {
+		return s
+	}
+	parts := strings.Split(s, "-")
+	var out []string
+	for _, p := range parts {
+		if p == "" {
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(p)
+		out = append(out, string(unicode.ToUpper(r))+p[size:])
+	}
+	return strings.Join(out, " ")
+}
 
 // sanitizeText strips ASCII control characters (including ANSI escape sequences)
 // from untrusted text before rendering in the terminal.
@@ -158,31 +178,32 @@ func cleanPluginPath(routePrefix, epPath string) string {
 func actionGenericPlugin(api *APIClient, p PluginInfo) func() tea.Cmd {
 	return func() tea.Cmd {
 		return func() tea.Msg {
-			title := strings.Title(p.Name) //nolint:staticcheck // fine for ASCII plugin names
+			title := titleCase(sanitizeText(p.Name))
 			var items []MenuItem
 
 			for _, ep := range p.Endpoints {
 				desc := sanitizeText(ep.Description)
+				safePath := sanitizeText(ep.Path)
 				switch strings.ToUpper(ep.Method) {
 				case "GET":
-					path := cleanPluginPath(p.RoutePrefix, ep.Path)
-					if path == "" {
+					apiPath := cleanPluginPath(p.RoutePrefix, ep.Path)
+					if apiPath == "" {
 						continue
 					}
 					items = append(items, MenuItem{
 						Title:       desc,
-						Description: fmt.Sprintf("GET %s", ep.Path),
-						Action:      actionGenericGet(api, path),
+						Description: fmt.Sprintf("GET %s", safePath),
+						Action:      actionGenericGet(api, apiPath),
 					})
 				case "POST":
-					path := cleanPluginPath(p.RoutePrefix, ep.Path)
-					if path == "" {
+					apiPath := cleanPluginPath(p.RoutePrefix, ep.Path)
+					if apiPath == "" {
 						continue
 					}
 					items = append(items, MenuItem{
 						Title:       desc,
-						Description: fmt.Sprintf("POST %s", ep.Path),
-						Action:      actionGenericPost(api, path, desc),
+						Description: fmt.Sprintf("POST %s", safePath),
+						Action:      actionGenericPost(api, apiPath, desc),
 					})
 				}
 			}
@@ -288,7 +309,7 @@ func actionUpdateStatus(api *APIClient) func() tea.Cmd {
 					flag = "!"
 					secCount++
 				}
-				fmt.Fprintf(&b, "%s %-30s  %s → %s\n", flag, u.Package, u.CurrentVersion, u.NewVersion) //nolint:errcheck // writes to strings.Builder
+				fmt.Fprintf(&b, "%s %-30s  %s → %s\n", flag, sanitizeText(u.Package), sanitizeText(u.CurrentVersion), sanitizeText(u.NewVersion)) //nolint:errcheck // writes to strings.Builder
 			}
 			header := fmt.Sprintf("Pending: %d packages (%d security)\n\n", len(updates), secCount)
 			return apiResultMsg{detail: header + b.String()}
@@ -303,7 +324,7 @@ func actionUpdateRunFull(api *APIClient) func() tea.Cmd {
 			if err != nil {
 				return apiResultMsg{err: err}
 			}
-			detail := fmt.Sprintf("Status: %s\nType:   %s", r.Status, r.Type)
+			detail := fmt.Sprintf("Status: %s\nType:   %s", sanitizeText(r.Status), sanitizeText(r.Type))
 			return apiResultMsg{detail: detail}
 		}
 	}
@@ -316,7 +337,7 @@ func actionUpdateRunSecurity(api *APIClient) func() tea.Cmd {
 			if err != nil {
 				return apiResultMsg{err: err}
 			}
-			detail := fmt.Sprintf("Status: %s\nType:   %s", r.Status, r.Type)
+			detail := fmt.Sprintf("Status: %s\nType:   %s", sanitizeText(r.Status), sanitizeText(r.Type))
 			return apiResultMsg{detail: detail}
 		}
 	}
@@ -334,10 +355,11 @@ func actionUpdateLogs(api *APIClient) func() tea.Cmd {
 			}
 			detail := fmt.Sprintf(
 				"Type:     %s\nStatus:   %s\nStarted:  %s\nDuration: %s\nPackages: %d",
-				rs.Type, rs.Status, rs.StartedAt, rs.Duration, rs.Packages,
+				sanitizeText(rs.Type), sanitizeText(rs.Status),
+				sanitizeText(rs.StartedAt), sanitizeText(rs.Duration), rs.Packages,
 			)
 			if rs.Log != "" {
-				detail += "\n\nLog:\n" + rs.Log
+				detail += "\n\nLog:\n" + sanitizeBody(rs.Log)
 			}
 			return apiResultMsg{detail: detail}
 		}
@@ -377,7 +399,8 @@ func actionNetworkInterfaces(api *APIClient) func() tea.Cmd {
 			var b strings.Builder
 			for _, iface := range ifaces {
 				fmt.Fprintf(&b, "%-12s  %-6s  %-17s  %s\n",
-					iface.Name, iface.State, iface.MAC, iface.IP) //nolint:errcheck // writes to strings.Builder
+					sanitizeText(iface.Name), sanitizeText(iface.State),
+					sanitizeText(iface.MAC), sanitizeText(iface.IP)) //nolint:errcheck // writes to strings.Builder
 			}
 			return apiResultMsg{detail: b.String()}
 		}
@@ -393,7 +416,7 @@ func actionNetworkStatus(api *APIClient) func() tea.Cmd {
 			}
 			detail := fmt.Sprintf(
 				"Default GW:        %s\nDNS Reachable:     %v\nInternet Reachable: %v",
-				s.DefaultGateway, s.DNSReachable, s.InternetReachable,
+				sanitizeText(s.DefaultGateway), s.DNSReachable, s.InternetReachable,
 			)
 			return apiResultMsg{detail: detail}
 		}
@@ -409,11 +432,19 @@ func actionNetworkDNS(api *APIClient) func() tea.Cmd {
 			}
 			servers := "none"
 			if len(dns.Nameservers) > 0 {
-				servers = strings.Join(dns.Nameservers, ", ")
+				sanitized := make([]string, len(dns.Nameservers))
+				for i, ns := range dns.Nameservers {
+					sanitized[i] = sanitizeText(ns)
+				}
+				servers = strings.Join(sanitized, ", ")
 			}
 			search := "none"
 			if len(dns.Search) > 0 {
-				search = strings.Join(dns.Search, ", ")
+				sanitized := make([]string, len(dns.Search))
+				for i, s := range dns.Search {
+					sanitized[i] = sanitizeText(s)
+				}
+				search = strings.Join(sanitized, ", ")
 			}
 			detail := fmt.Sprintf("Nameservers:  %s\nSearch:       %s", servers, search)
 			return apiResultMsg{detail: detail}

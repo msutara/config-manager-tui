@@ -7,6 +7,28 @@ import (
 	"testing"
 )
 
+func TestTitleCase(t *testing.T) {
+	tests := []struct {
+		name, in, want string
+	}{
+		{"simple", "update", "Update"},
+		{"hyphenated", "my-plugin", "My Plugin"},
+		{"multi", "a-b-c", "A B C"},
+		{"empty", "", ""},
+		{"single char", "x", "X"},
+		{"double hyphen", "a--b", "A B"},
+		{"trailing hyphen", "trailing-", "Trailing"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := titleCase(tt.in)
+			if got != tt.want {
+				t.Errorf("titleCase(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSanitizeText(t *testing.T) {
 	tests := []struct {
 		name, in, want string
