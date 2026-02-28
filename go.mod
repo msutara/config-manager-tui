@@ -1,6 +1,6 @@
 module github.com/msutara/config-manager-tui
 
-go 1.22.0
+go 1.24.0
 
 require (
 	github.com/charmbracelet/bubbletea v1.3.4
