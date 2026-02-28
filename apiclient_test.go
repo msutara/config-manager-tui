@@ -4,8 +4,214 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
+
+// ---------- Generic helpers ----------
+
+func TestTruncateBody(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"short", "error detail", "error detail"},
+		{"strips control chars", "err\x00or\x1b[31m", "error[31m"},
+		{"strips del", "abc\x7fdef", "abcdef"},
+		{"strips C1 controls", "abc\u0085\u008A\u009Fdef", "abcdef"},
+		{"truncates long", strings.Repeat("x", 300), strings.Repeat("x", 200) + "..."},
+		{"multibyte no truncation", strings.Repeat("é", 101), strings.Repeat("é", 101)},
+		{"multibyte truncates", strings.Repeat("é", 250), strings.Repeat("é", 200) + "..."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := truncateBody([]byte(tt.in))
+			if got != tt.want {
+				t.Errorf("truncateBody(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+// ---------- Generic plugin API tests ----------
+
+func TestAPIClientGetPlugins(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/plugins" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode([]PluginRegistryEntry{
+			{
+				Name: "firewall", Version: "0.1.0",
+				Description: "Firewall management",
+				RoutePrefix: "/api/v1/plugins/firewall",
+				Endpoints: []PluginEndpoint{
+					{Method: "GET", Path: "/rules", Description: "Active rules"},
+					{Method: "POST", Path: "/reload", Description: "Reload rules"},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	plugins, err := client.GetPlugins()
+	if err != nil {
+		t.Fatalf("GetPlugins: %v", err)
+	}
+	if len(plugins) != 1 {
+		t.Fatalf("plugins: got %d, want 1", len(plugins))
+	}
+	if plugins[0].Name != "firewall" {
+		t.Errorf("name: got %q, want %q", plugins[0].Name, "firewall")
+	}
+	if len(plugins[0].Endpoints) != 2 {
+		t.Fatalf("endpoints: got %d, want 2", len(plugins[0].Endpoints))
+	}
+	if plugins[0].Endpoints[0].Method != "GET" {
+		t.Errorf("first endpoint method: got %q, want %q", plugins[0].Endpoints[0].Method, "GET")
+	}
+}
+
+func TestAPIClientGetPluginsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.GetPlugins()
+	if err == nil {
+		t.Fatal("expected error for 500")
+	}
+}
+
+func TestAPIClientGetRawWithToken(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	client := NewAPIClientWithToken(srv.URL, "raw-secret")
+	_, err := client.GetRaw("/test")
+	if err != nil {
+		t.Fatalf("GetRaw: %v", err)
+	}
+	if gotAuth != "Bearer raw-secret" {
+		t.Errorf("Authorization = %q, want %q", gotAuth, "Bearer raw-secret")
+	}
+}
+
+func TestAPIClientPostRawWithToken(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	client := NewAPIClientWithToken(srv.URL, "post-raw-secret")
+	_, err := client.PostRaw("/test")
+	if err != nil {
+		t.Fatalf("PostRaw: %v", err)
+	}
+	if gotAuth != "Bearer post-raw-secret" {
+		t.Errorf("Authorization = %q, want %q", gotAuth, "Bearer post-raw-secret")
+	}
+}
+
+func TestAPIClientGetRaw(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/plugins/firewall/rules" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Write([]byte(`{"rules":["allow 22/tcp"]}`))
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	body, err := client.GetRaw("/api/v1/plugins/firewall/rules")
+	if err != nil {
+		t.Fatalf("GetRaw: %v", err)
+	}
+	if !strings.Contains(body, "allow 22/tcp") {
+		t.Errorf("body should contain rule data, got %q", body)
+	}
+}
+
+func TestAPIClientGetRawError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("server error"))
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.GetRaw("/fail")
+	if err == nil {
+		t.Fatal("expected error for 500")
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("error should mention 500: %v", err)
+	}
+}
+
+func TestAPIClientPostRaw(t *testing.T) {
+	var gotMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		w.WriteHeader(http.StatusAccepted)
+		w.Write([]byte(`{"status":"ok"}`))
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	body, err := client.PostRaw("/api/v1/plugins/firewall/reload")
+	if err != nil {
+		t.Fatalf("PostRaw: %v", err)
+	}
+	if gotMethod != http.MethodPost {
+		t.Errorf("method: got %q, want POST", gotMethod)
+	}
+	if !strings.Contains(body, "ok") {
+		t.Errorf("body should contain status, got %q", body)
+	}
+}
+
+func TestAPIClientPostRawError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("broken"))
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.PostRaw("/fail")
+	if err == nil {
+		t.Fatal("expected error for 500")
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("error should mention 500: %v", err)
+	}
+}
+
+func TestAPIClientPostRaw204(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.PostRaw("/ok")
+	if err != nil {
+		t.Fatalf("204 should not be error: %v", err)
+	}
+}
+
+// ---------- Core API tests ----------
 
 func TestAPIClientGetNode(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,6 +262,8 @@ func TestAPIClientGetNodeConnectionRefused(t *testing.T) {
 		t.Fatal("expected error for connection refused")
 	}
 }
+
+// ---------- Update plugin API tests ----------
 
 func TestAPIClientGetUpdateStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -131,6 +339,29 @@ func TestAPIClientRunUpdateAccepted(t *testing.T) {
 	}
 }
 
+func TestAPIClientGetUpdateLogs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(RunStatus{
+			Type:     "full",
+			Status:   "completed",
+			Duration: "2m30s",
+			Packages: 5,
+		})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	rs, err := client.GetUpdateLogs()
+	if err != nil {
+		t.Fatalf("GetUpdateLogs: %v", err)
+	}
+	if rs.Packages != 5 {
+		t.Errorf("packages: got %d, want 5", rs.Packages)
+	}
+}
+
+// ---------- Network plugin API tests ----------
+
 func TestAPIClientGetNetworkInterfaces(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		json.NewEncoder(w).Encode([]NetworkInterface{
@@ -191,26 +422,7 @@ func TestAPIClientGetNetworkStatus(t *testing.T) {
 	}
 }
 
-func TestAPIClientGetUpdateLogs(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		json.NewEncoder(w).Encode(RunStatus{
-			Type:     "full",
-			Status:   "completed",
-			Duration: "2m30s",
-			Packages: 5,
-		})
-	}))
-	defer srv.Close()
-
-	client := NewAPIClient(srv.URL)
-	rs, err := client.GetUpdateLogs()
-	if err != nil {
-		t.Fatalf("GetUpdateLogs: %v", err)
-	}
-	if rs.Packages != 5 {
-		t.Errorf("packages: got %d, want 5", rs.Packages)
-	}
-}
+// ---------- Client behavior tests ----------
 
 func TestAPIClientTrailingSlashNormalized(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
