@@ -143,7 +143,8 @@ func sanitizeBody(s string) string {
 
 // cleanPluginPath builds a safe API path from a route prefix and endpoint path,
 // rejecting path traversal (including percent-encoded sequences) and verifying
-// the result stays under the expected prefix.
+// the result stays under the expected prefix. routePrefix is trusted — it is
+// set by the plugin registry (server-controlled, not user input).
 func cleanPluginPath(routePrefix, epPath string) string {
 	prefix := strings.TrimRight(routePrefix, "/")
 	if prefix == "" {
