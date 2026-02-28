@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // APIClient calls the local CM REST API.
@@ -123,8 +124,8 @@ func truncateBody(b []byte) string {
 	s := string(b)
 	runes := make([]rune, 0, maxLen)
 	for _, r := range s {
-		if r < 0x20 || r == 0x7F {
-			continue // strip control characters
+		if unicode.IsControl(r) {
+			continue // strip all control characters (ASCII C0 + Unicode C1)
 		}
 		runes = append(runes, r)
 		if len(runes) == maxLen {

@@ -121,7 +121,7 @@ func sanitizeText(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
 	for _, r := range s {
-		if r >= 0x20 && r != 0x7F {
+		if !unicode.IsControl(r) {
 			_, _ = b.WriteRune(r) //nolint:errcheck // strings.Builder.WriteRune never fails
 		}
 	}
@@ -134,7 +134,7 @@ func sanitizeBody(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
 	for _, r := range s {
-		if r == '\n' || r == '\t' || (r >= 0x20 && r != 0x7F) {
+		if r == '\n' || r == '\t' || !unicode.IsControl(r) {
 			_, _ = b.WriteRune(r) //nolint:errcheck // strings.Builder.WriteRune never fails
 		}
 	}
@@ -159,9 +159,9 @@ func cleanPluginPath(routePrefix, epPath string) string {
 	if strings.Contains(decoded, "%") {
 		return ""
 	}
-	// Reject control characters (NUL, newlines, etc.).
+	// Reject control characters (NUL, newlines, C1, etc.).
 	for _, r := range decoded {
-		if r < 0x20 || r == 0x7F {
+		if unicode.IsControl(r) {
 			return ""
 		}
 	}

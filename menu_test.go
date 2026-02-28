@@ -37,6 +37,7 @@ func TestSanitizeText(t *testing.T) {
 		{"null byte", "abc\x00def", "abcdef"},
 		{"newline", "line1\nline2", "line1line2"},
 		{"ansi escape", "bad\x1b[31mred\x1b[0m", "bad[31mred[0m"},
+		{"C1 controls", "abc\u0085\u008A\u009Bdef", "abcdef"},
 		{"tab", "col1\tcol2", "col1col2"},
 		{"empty", "", ""},
 	}
@@ -58,6 +59,7 @@ func TestSanitizeBody(t *testing.T) {
 		{"preserves tabs", "col1\tcol2", "col1\tcol2"},
 		{"strips null", "abc\x00def", "abcdef"},
 		{"strips ansi", "\x1b[31mred\x1b[0m", "[31mred[0m"},
+		{"strips C1 controls", "abc\u0085\u009Bdef", "abcdef"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -334,7 +336,10 @@ func TestActionGenericGet_NonJSON(t *testing.T) {
 }
 
 func TestActionGenericGet_Error(t *testing.T) {
-	api := NewAPIClient("http://localhost:1") // nothing listening
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	srv.Close() // immediately close so connections fail reliably
+
+	api := NewAPIClient(srv.URL)
 	action := actionGenericGet(api, "/fail")
 	cmd := action()
 	msg := cmd()
@@ -372,7 +377,10 @@ func TestActionGenericPost_Success(t *testing.T) {
 }
 
 func TestActionGenericPost_Error(t *testing.T) {
-	api := NewAPIClient("http://localhost:1") // nothing listening
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	srv.Close() // immediately close so connections fail reliably
+
+	api := NewAPIClient(srv.URL)
 	action := actionGenericPost(api, "/fail", "Test action")
 	cmd := action()
 	msg := cmd()
