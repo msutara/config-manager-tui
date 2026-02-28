@@ -652,15 +652,15 @@ func TestBuildMainMenuUnknownPlugin(t *testing.T) {
 	m := New([]PluginInfo{{Name: "custom-plugin", Description: "A custom one"}})
 	found := false
 	for _, item := range m.menuItems {
-		if item.Title == "custom-plugin" {
+		if item.Title == "Custom-Plugin" {
 			found = true
-			if item.Action != nil {
-				t.Error("unknown plugin should have nil Action")
+			if item.Action == nil {
+				t.Error("unknown plugin should have generic Action wired")
 			}
 		}
 	}
 	if !found {
-		t.Error("unknown plugin should appear in menu by name")
+		t.Error("unknown plugin should appear in menu with title-cased name")
 	}
 }
 

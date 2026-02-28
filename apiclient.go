@@ -31,6 +31,26 @@ func NewAPIClientWithToken(baseURL, token string) *APIClient {
 	}
 }
 
+// --- Generic types (plugin registry) ---
+
+// PluginRegistryEntry describes a plugin as returned by GET /api/v1/plugins.
+type PluginRegistryEntry struct {
+	Name        string           `json:"name"`
+	Version     string           `json:"version"`
+	Description string           `json:"description"`
+	RoutePrefix string           `json:"route_prefix"`
+	Endpoints   []PluginEndpoint `json:"endpoints"`
+}
+
+// PluginEndpoint describes a single HTTP endpoint exposed by a plugin.
+type PluginEndpoint struct {
+	Method      string `json:"method"`
+	Path        string `json:"path"`
+	Description string `json:"description"`
+}
+
+// --- Core types ---
+
 // NodeInfo represents the response from /api/v1/node.
 type NodeInfo struct {
 	Arch          string `json:"arch"`
@@ -39,6 +59,8 @@ type NodeInfo struct {
 	OS            string `json:"os"`
 	UptimeSeconds int    `json:"uptime_seconds"`
 }
+
+// --- Update plugin types ---
 
 // PendingUpdate represents a single pending update from /api/v1/plugins/update/status.
 type PendingUpdate struct {
@@ -64,6 +86,13 @@ type RunStatus struct {
 	Log       string `json:"log"`
 }
 
+// UpdateConfig models the subset of /api/v1/plugins/update/config used by the TUI.
+type UpdateConfig struct {
+	SecurityAvailable *bool `json:"security_available"`
+}
+
+// --- Network plugin types ---
+
 // NetworkInterface represents a network interface from /api/v1/plugins/network/interfaces.
 type NetworkInterface struct {
 	Name  string `json:"name"`
@@ -85,6 +114,90 @@ type NetworkStatus struct {
 	InternetReachable bool   `json:"internet_reachable"`
 }
 
+// --- Generic plugin methods ---
+
+// truncateBody sanitizes and truncates a response body for inclusion in error
+// messages, preventing terminal injection and oversized output.
+func truncateBody(b []byte) string {
+	const maxLen = 200
+	s := strings.Map(func(r rune) rune {
+		if r >= 0x20 && r != 0x7F {
+			return r
+		}
+		return -1 // strip control characters
+	}, string(b))
+	if len(s) <= maxLen {
+		return s
+	}
+	// Truncate at rune boundary to avoid invalid UTF-8.
+	truncated := []rune(s)
+	if len(truncated) > maxLen {
+		truncated = truncated[:maxLen]
+	}
+	return string(truncated) + "..."
+}
+
+// GetPlugins fetches the plugin registry.
+func (c *APIClient) GetPlugins() ([]PluginRegistryEntry, error) {
+	var plugins []PluginRegistryEntry
+	if err := c.getJSON("/api/v1/plugins", &plugins); err != nil {
+		return nil, err
+	}
+	return plugins, nil
+}
+
+// GetRaw fetches an arbitrary endpoint and returns its raw body string.
+func (c *APIClient) GetRaw(path string) (string, error) {
+	req, err := http.NewRequest(http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return "", fmt.Errorf("build request: %w", err)
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return "", fmt.Errorf("read body %s: %w", path, readErr)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GET %s: status %d: %s", path, resp.StatusCode, truncateBody(body))
+	}
+	return string(body), nil
+}
+
+// PostRaw sends a POST to an arbitrary endpoint and returns the status message.
+func (c *APIClient) PostRaw(path string) (string, error) {
+	req, err := http.NewRequest(http.MethodPost, c.baseURL+path, nil)
+	if err != nil {
+		return "", fmt.Errorf("build request: %w", err)
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return "", fmt.Errorf("read body %s: %w", path, readErr)
+	}
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
+		return "", fmt.Errorf("POST %s: status %d: %s", path, resp.StatusCode, truncateBody(body))
+	}
+	return string(body), nil
+}
+
+// --- Core methods ---
+
 // GetNode fetches system information.
 func (c *APIClient) GetNode() (*NodeInfo, error) {
 	var info NodeInfo
@@ -93,6 +206,8 @@ func (c *APIClient) GetNode() (*NodeInfo, error) {
 	}
 	return &info, nil
 }
+
+// --- Update plugin methods ---
 
 // GetUpdateStatus fetches pending updates.
 func (c *APIClient) GetUpdateStatus() ([]PendingUpdate, error) {
@@ -118,11 +233,6 @@ func (c *APIClient) RunUpdate(mode string) (*UpdateRunResult, error) {
 	return &r, nil
 }
 
-// UpdateConfig models the subset of /api/v1/plugins/update/config used by the TUI.
-type UpdateConfig struct {
-	SecurityAvailable *bool `json:"security_available"`
-}
-
 // GetUpdateConfig fetches the update plugin configuration.
 func (c *APIClient) GetUpdateConfig() (*UpdateConfig, error) {
 	var cfg UpdateConfig
@@ -140,6 +250,8 @@ func (c *APIClient) GetUpdateLogs() (*RunStatus, error) {
 	}
 	return &rs, nil
 }
+
+// --- Network plugin methods ---
 
 // GetNetworkInterfaces lists all network interfaces.
 func (c *APIClient) GetNetworkInterfaces() ([]NetworkInterface, error) {
@@ -184,7 +296,7 @@ func (c *APIClient) getJSON(path string, out interface{}) error {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort error body
-		return fmt.Errorf("GET %s: status %d: %s", path, resp.StatusCode, string(body))
+		return fmt.Errorf("GET %s: status %d: %s", path, resp.StatusCode, truncateBody(body))
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
@@ -210,7 +322,7 @@ func (c *APIClient) postJSON(path, body string, out interface{}) error {
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 		b, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort error body
-		return fmt.Errorf("POST %s: status %d: %s", path, resp.StatusCode, string(b))
+		return fmt.Errorf("POST %s: status %d: %s", path, resp.StatusCode, truncateBody(b))
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {

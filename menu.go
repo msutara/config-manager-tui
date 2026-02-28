@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/url"
+	"path"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,6 +16,8 @@ import (
 type PluginInfo struct {
 	Name        string
 	Description string
+	RoutePrefix string
+	Endpoints   []PluginEndpoint
 }
 
 // MenuItem represents a single entry in a TUI menu.
@@ -50,8 +55,9 @@ func (m *Model) buildMainMenu() []MenuItem {
 			})
 		default:
 			items = append(items, MenuItem{
-				Title:       p.Name,
+				Title:       strings.Title(p.Name), //nolint:staticcheck // fine for ASCII plugin names
 				Description: p.Description,
+				Action:      actionGenericPlugin(api, p),
 			})
 		}
 	}
@@ -81,6 +87,145 @@ func actionSystemInfo(api *APIClient) func() tea.Cmd {
 				info.Hostname, info.OS, info.Kernel, info.Arch, uptime,
 			)
 			return apiResultMsg{detail: detail}
+		}
+	}
+}
+
+// --- Generic Plugin Sub-Menu ---
+
+// sanitizeText strips ASCII control characters (including ANSI escape sequences)
+// from untrusted text before rendering in the terminal.
+func sanitizeText(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if r >= 0x20 && r != 0x7F {
+			_, _ = b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// sanitizeBody strips control characters but preserves newlines and tabs
+// for readable display of multi-line API response bodies.
+func sanitizeBody(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if r == '\n' || r == '\t' || (r >= 0x20 && r != 0x7F) {
+			_, _ = b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// cleanPluginPath builds a safe API path from a route prefix and endpoint path,
+// rejecting path traversal (including percent-encoded sequences) and verifying
+// the result stays under the expected prefix.
+func cleanPluginPath(routePrefix, epPath string) string {
+	prefix := strings.TrimRight(routePrefix, "/")
+	if prefix == "" {
+		return ""
+	}
+
+	// Decode percent-encoding before validation to catch %2e%2e etc.
+	decoded, err := url.PathUnescape(epPath)
+	if err != nil {
+		return ""
+	}
+	// Reject any remaining percent signs (double-encoding attempt).
+	if strings.Contains(decoded, "%") {
+		return ""
+	}
+	// Reject control characters (NUL, newlines, etc.).
+	for _, r := range decoded {
+		if r < 0x20 || r == 0x7F {
+			return ""
+		}
+	}
+	if !strings.HasPrefix(decoded, "/") {
+		decoded = "/" + decoded
+	}
+
+	// Canonicalize and verify no traversal escapes the prefix.
+	full := path.Clean(prefix + decoded)
+	if !strings.HasPrefix(full, prefix+"/") && full != prefix {
+		return ""
+	}
+	return full
+}
+
+func actionGenericPlugin(api *APIClient, p PluginInfo) func() tea.Cmd {
+	return func() tea.Cmd {
+		return func() tea.Msg {
+			title := strings.Title(p.Name) //nolint:staticcheck // fine for ASCII plugin names
+			var items []MenuItem
+
+			for _, ep := range p.Endpoints {
+				desc := sanitizeText(ep.Description)
+				switch strings.ToUpper(ep.Method) {
+				case "GET":
+					path := cleanPluginPath(p.RoutePrefix, ep.Path)
+					if path == "" {
+						continue
+					}
+					items = append(items, MenuItem{
+						Title:       desc,
+						Description: fmt.Sprintf("GET %s", ep.Path),
+						Action:      actionGenericGet(api, path),
+					})
+				case "POST":
+					path := cleanPluginPath(p.RoutePrefix, ep.Path)
+					if path == "" {
+						continue
+					}
+					items = append(items, MenuItem{
+						Title:       desc,
+						Description: fmt.Sprintf("POST %s", ep.Path),
+						Action:      actionGenericPost(api, path, desc),
+					})
+				}
+			}
+
+			items = append(items, MenuItem{
+				Title: "Back", Description: "Return to main menu",
+				Action: func() tea.Cmd {
+					return func() tea.Msg { return subMenuMsg{} }
+				},
+			})
+
+			return subMenuMsg{title: title, items: items}
+		}
+	}
+}
+
+func actionGenericGet(api *APIClient, path string) func() tea.Cmd {
+	return func() tea.Cmd {
+		return func() tea.Msg {
+			body, err := api.GetRaw(path)
+			if err != nil {
+				return apiResultMsg{err: err}
+			}
+			// Try to pretty-print JSON; fall back to raw.
+			var raw any
+			if json.Unmarshal([]byte(body), &raw) == nil {
+				if pretty, err := json.MarshalIndent(raw, "", "  "); err == nil {
+					body = string(pretty)
+				}
+			}
+			return apiResultMsg{detail: sanitizeBody(body)}
+		}
+	}
+}
+
+func actionGenericPost(api *APIClient, path, description string) func() tea.Cmd {
+	return func() tea.Cmd {
+		return func() tea.Msg {
+			_, err := api.PostRaw(path)
+			if err != nil {
+				return apiResultMsg{err: err}
+			}
+			return apiResultMsg{detail: fmt.Sprintf("%s completed successfully.", description)}
 		}
 	}
 }
