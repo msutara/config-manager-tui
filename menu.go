@@ -464,7 +464,7 @@ func actionToggleAutoSecurity(api *APIClient) func() tea.Cmd {
 			if err != nil {
 				return settingsResultMsg{err: err}
 			}
-			current := true
+			current := false
 			if v, ok := ps.Config["auto_security"].(bool); ok {
 				current = v
 			}
