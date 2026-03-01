@@ -4,6 +4,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -145,7 +146,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.inputPrompt = msg.prompt
 		m.inputKey = msg.key
 		m.inputPlugin = msg.plugin
-		m.inputBuffer = sanitizeText(msg.currentVal)
+		m.inputBuffer = msg.currentVal
 		m.statusMsg = ""
 		return m, nil
 
@@ -390,8 +391,13 @@ func formatSettingsResult(key, value string, res *PluginSettingsUpdateResult) st
 		fmt.Fprintf(&b, "\nWarning: %s\n", sanitizeText(res.Warning)) //nolint:errcheck // writes to strings.Builder
 	}
 	b.WriteString("\nCurrent settings:\n") //nolint:errcheck // writes to strings.Builder
-	for k, v := range res.Config {
-		fmt.Fprintf(&b, "  %-20s %s\n", sanitizeText(k)+":", sanitizeValue(v)) //nolint:errcheck // writes to strings.Builder
+	keys := make([]string, 0, len(res.Config))
+	for k := range res.Config {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		fmt.Fprintf(&b, "  %-20s %s\n", sanitizeText(k)+":", sanitizeValue(res.Config[k])) //nolint:errcheck // writes to strings.Builder
 	}
 	return b.String()
 }

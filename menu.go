@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -421,8 +422,13 @@ func actionUpdateViewSettings(api *APIClient) func() tea.Cmd {
 			}
 			var b strings.Builder
 			b.WriteString("Update Plugin Settings\n\n") //nolint:errcheck // writes to strings.Builder
-			for k, v := range ps.Config {
-				fmt.Fprintf(&b, "  %-20s %s\n", sanitizeText(k)+":", sanitizeValue(v)) //nolint:errcheck // writes to strings.Builder
+			keys := make([]string, 0, len(ps.Config))
+			for k := range ps.Config {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				fmt.Fprintf(&b, "  %-20s %s\n", sanitizeText(k)+":", sanitizeValue(ps.Config[k])) //nolint:errcheck // writes to strings.Builder
 			}
 			return apiResultMsg{detail: b.String()}
 		}
