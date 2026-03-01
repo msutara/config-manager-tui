@@ -10,14 +10,25 @@ serves as the primary interactive interface.
 
 Use the following keys to navigate:
 
-| Key             | Action                                            |
-| --------------- | ------------------------------------------------- |
-| ↑ / k           | Move cursor up                                    |
-| ↓ / j           | Move cursor down                                  |
-| Enter           | Select the highlighted item                       |
+| Key             | Action                                             |
+| --------------- | -------------------------------------------------- |
+| ↑ / k           | Move cursor up                                     |
+| ↓ / j           | Move cursor down                                   |
+| Enter           | Select the highlighted item                        |
 | esc/q/backspace | Go back (in sub-menus); any key goes back (detail) |
-| q               | Quit the TUI (from main menu)                     |
-| ctrl+c          | Quit the TUI (from any screen)                    |
+| q               | Quit the TUI (from main menu)                      |
+| ctrl+c          | Quit the TUI (from any screen)                     |
+
+### Input Screen
+
+When editing a text value (e.g. cron schedule), an input screen appears:
+
+| Key       | Action                    |
+| --------- | ------------------------- |
+| Type text | Appends to the input      |
+| Backspace | Delete last character     |
+| Enter     | Save the value            |
+| Esc       | Cancel and return to menu |
 
 ## 3. Main Menu
 
@@ -35,7 +46,9 @@ binary. It always includes:
 Selecting a plugin from the main menu opens its submenu. Each plugin provides
 its own set of menu actions:
 
-- **Update Manager** — Check Status, Full Update, Security Update (when available), View Logs
+- **Update Manager** — Check Status, Full Update, Security Update (when
+  available), View Logs, View Settings, Edit Schedule, Toggle Auto-Security,
+  Change Security Source
 - **Network Manager** — List Interfaces, Network Status, DNS Settings
 
 Each submenu includes a "Back" item to return to the main menu. You can also

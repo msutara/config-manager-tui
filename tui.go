@@ -4,7 +4,9 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -16,6 +18,7 @@ const (
 	screenMain   screen = iota // top-level menu
 	screenSub                  // plugin sub-menu
 	screenDetail               // read-only detail view (press any key to go back)
+	screenInput                // text input for editing a config value
 )
 
 // ConnectionMode indicates how the TUI is connected to the API.
@@ -44,6 +47,12 @@ type Model struct {
 	parentCursor int        // saved cursor position for returning from sub-menu
 	statusMsg    string     // transient status message
 	loading      bool       // true while an async command is in flight
+
+	// Input screen state (screenInput).
+	inputBuffer string // current text being edited
+	inputPrompt string // label shown above the input field
+	inputKey    string // config key being edited (e.g. "schedule")
+	inputPlugin string // plugin name for the PUT call
 }
 
 // New returns an initialised TUI model with default API URL.
@@ -92,18 +101,53 @@ type subMenuMsg struct {
 	items []MenuItem
 }
 
+// editInputMsg tells Update to switch to the text input screen.
+type editInputMsg struct {
+	prompt     string // label shown above the input field
+	key        string // config key being edited
+	plugin     string // plugin name for the PUT call
+	currentVal string // pre-filled value
+}
+
+// settingsResultMsg carries the result of a config update.
+type settingsResultMsg struct {
+	detail string
+	err    error
+}
+
 // Update implements tea.Model. It handles keyboard input for menu navigation.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case apiResultMsg:
 		if msg.err != nil {
-			m.detail = fmt.Sprintf("Error: %v\n\nPress any key to go back.", msg.err)
+			m.detail = fmt.Sprintf("Error: %s\n\nPress any key to go back.", sanitizeText(msg.err.Error()))
 		} else {
 			m.detail = msg.detail + "\n\nPress any key to go back."
 		}
 		m.screen = screenDetail
 		m.statusMsg = ""
 		m.loading = false
+		return m, nil
+
+	case settingsResultMsg:
+		if msg.err != nil {
+			m.detail = fmt.Sprintf("Error: %s\n\nPress any key to go back.", sanitizeText(msg.err.Error()))
+		} else {
+			m.detail = msg.detail + "\n\nPress any key to go back."
+		}
+		m.screen = screenDetail
+		m.statusMsg = ""
+		m.loading = false
+		return m, nil
+
+	case editInputMsg:
+		m.loading = false
+		m.screen = screenInput
+		m.inputPrompt = msg.prompt
+		m.inputKey = msg.key
+		m.inputPlugin = msg.plugin
+		m.inputBuffer = msg.currentVal
+		m.statusMsg = ""
 		return m, nil
 
 	case subMenuMsg:
@@ -127,6 +171,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Type == tea.KeyCtrlC {
 			m.quitting = true
 			return m, tea.Quit
+		}
+
+		// Input screen handles its own keys.
+		if m.screen == screenInput {
+			return m.handleInputKey(msg)
 		}
 
 		// In detail view, any other key goes back.
@@ -184,6 +233,47 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// handleInputKey processes key events while the text input screen is active.
+func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.loading {
+		return m, nil
+	}
+	switch msg.Type {
+	case tea.KeyEsc:
+		m.goBack()
+		return m, nil
+	case tea.KeyEnter:
+		value := m.inputBuffer
+		key := m.inputKey
+		pluginName := m.inputPlugin
+		api := m.api
+		m.loading = true
+		m.statusMsg = "Saving…"
+		return m, func() tea.Msg {
+			res, err := api.UpdatePluginSetting(pluginName, key, value)
+			if err != nil {
+				return settingsResultMsg{err: err}
+			}
+			detail := formatSettingsResult(key, value, res)
+			return settingsResultMsg{detail: detail}
+		}
+	case tea.KeyBackspace:
+		if len(m.inputBuffer) > 0 {
+			_, size := utf8.DecodeLastRuneInString(m.inputBuffer)
+			m.inputBuffer = m.inputBuffer[:len(m.inputBuffer)-size]
+		}
+		return m, nil
+	case tea.KeySpace:
+		m.inputBuffer += " "
+		return m, nil
+	default:
+		if msg.Type == tea.KeyRunes {
+			m.inputBuffer += string(msg.Runes)
+		}
+		return m, nil
+	}
+}
+
 // goBack returns to the previous screen.
 func (m *Model) goBack() {
 	switch m.screen {
@@ -200,6 +290,16 @@ func (m *Model) goBack() {
 		} else {
 			m.screen = screenMain
 		}
+	case screenInput:
+		if m.parentItems != nil {
+			m.screen = screenSub
+		} else {
+			m.screen = screenMain
+		}
+		m.inputBuffer = ""
+		m.inputPrompt = ""
+		m.inputKey = ""
+		m.inputPlugin = ""
 	}
 	m.detail = ""
 	m.statusMsg = ""
@@ -215,6 +315,8 @@ func (m Model) View() string {
 	switch m.screen {
 	case screenDetail:
 		return m.viewDetail()
+	case screenInput:
+		return m.viewInput()
 	case screenSub:
 		return m.viewSubMenu()
 	default:
@@ -252,6 +354,50 @@ func (m Model) viewDetail() string {
 	}
 	for _, line := range strings.Split(m.detail, "\n") {
 		b.WriteString("  " + line + "\n") //nolint:errcheck // writes to strings.Builder
+	}
+	return b.String()
+}
+
+func (m Model) viewInput() string {
+	var b strings.Builder
+	b.WriteString(renderHeader()) //nolint:errcheck // writes to strings.Builder
+	if m.screenTitle != "" {
+		b.WriteString("  " + headerStyle.Render(m.screenTitle) + "\n\n") //nolint:errcheck // writes to strings.Builder
+	}
+	b.WriteString("  " + m.inputPrompt + "\n\n")                  //nolint:errcheck // writes to strings.Builder
+	b.WriteString("  > " + sanitizeText(m.inputBuffer) + "█\n\n") //nolint:errcheck // writes to strings.Builder
+	b.WriteString("  Enter: save  Esc: cancel\n")                 //nolint:errcheck // writes to strings.Builder
+	if m.statusMsg != "" {
+		b.WriteString("\n  " + m.statusMsg + "\n") //nolint:errcheck // writes to strings.Builder
+	}
+	return b.String()
+}
+
+// sanitizeValue converts an arbitrary config value to a sanitized string.
+// Composite types (slices, maps) are formatted then sanitized to prevent
+// terminal escape injection from nested string elements.
+func sanitizeValue(v any) string {
+	if s, ok := v.(string); ok {
+		return sanitizeText(s)
+	}
+	return sanitizeText(fmt.Sprintf("%v", v))
+}
+
+// formatSettingsResult builds a human-readable detail string from a config update.
+func formatSettingsResult(key, value string, res *PluginSettingsUpdateResult) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Updated %q to %q\n", sanitizeText(key), sanitizeText(value)) //nolint:errcheck // writes to strings.Builder
+	if res.Warning != "" {
+		fmt.Fprintf(&b, "\nWarning: %s\n", sanitizeText(res.Warning)) //nolint:errcheck // writes to strings.Builder
+	}
+	b.WriteString("\nCurrent settings:\n") //nolint:errcheck // writes to strings.Builder
+	keys := make([]string, 0, len(res.Config))
+	for k := range res.Config {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		fmt.Fprintf(&b, "  %-20s %s\n", sanitizeText(k)+":", sanitizeValue(res.Config[k])) //nolint:errcheck // writes to strings.Builder
 	}
 	return b.String()
 }

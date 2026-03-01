@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -675,4 +677,263 @@ func searchStr(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// ---------- Input screen tests ----------
+
+func TestEditInputMsgSwitchesToInputScreen(t *testing.T) {
+	m := New(nil)
+	msg := editInputMsg{
+		prompt:     "Enter schedule:",
+		key:        "schedule",
+		plugin:     "update",
+		currentVal: "0 3 * * *",
+	}
+	updated, _ := m.Update(msg)
+	m2 := updated.(Model)
+	if m2.screen != screenInput {
+		t.Errorf("screen = %v, want screenInput", m2.screen)
+	}
+	if m2.inputBuffer != "0 3 * * *" {
+		t.Errorf("inputBuffer = %q, want '0 3 * * *'", m2.inputBuffer)
+	}
+	if m2.inputKey != "schedule" {
+		t.Errorf("inputKey = %q, want 'schedule'", m2.inputKey)
+	}
+	if m2.inputPlugin != "update" {
+		t.Errorf("inputPlugin = %q, want 'update'", m2.inputPlugin)
+	}
+}
+
+func TestInputScreenRendersPromptAndBuffer(t *testing.T) {
+	m := New(nil)
+	m.screen = screenInput
+	m.inputPrompt = "Enter cron:"
+	m.inputBuffer = "0 4 * * *"
+	view := m.View()
+	if !strings.Contains(view, "Enter cron:") {
+		t.Error("view should contain input prompt")
+	}
+	if !strings.Contains(view, "0 4 * * *") {
+		t.Error("view should contain input buffer")
+	}
+	if !strings.Contains(view, "Enter: save") {
+		t.Error("view should contain key hints")
+	}
+}
+
+func TestInputScreenTypingAppendsRunes(t *testing.T) {
+	m := New(nil)
+	m.screen = screenInput
+	m.inputBuffer = "0 3"
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" * * *")})
+	m2 := updated.(Model)
+	if m2.inputBuffer != "0 3 * * *" {
+		t.Errorf("inputBuffer = %q, want '0 3 * * *'", m2.inputBuffer)
+	}
+}
+
+func TestInputScreenBackspaceDeletesLast(t *testing.T) {
+	m := New(nil)
+	m.screen = screenInput
+	m.inputBuffer = "abc"
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	m2 := updated.(Model)
+	if m2.inputBuffer != "ab" {
+		t.Errorf("inputBuffer = %q, want 'ab'", m2.inputBuffer)
+	}
+}
+
+func TestInputScreenBackspaceOnEmpty(t *testing.T) {
+	m := New(nil)
+	m.screen = screenInput
+	m.inputBuffer = ""
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	m2 := updated.(Model)
+	if m2.inputBuffer != "" {
+		t.Errorf("inputBuffer = %q, want empty", m2.inputBuffer)
+	}
+}
+
+func TestInputScreenEscGoesBack(t *testing.T) {
+	m := New(nil)
+	m.screen = screenInput
+	m.parentItems = []MenuItem{{Title: "test"}}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m2 := updated.(Model)
+	if m2.screen != screenSub {
+		t.Errorf("screen = %v, want screenSub after Esc", m2.screen)
+	}
+	if m2.inputBuffer != "" {
+		t.Error("inputBuffer should be cleared after Esc")
+	}
+}
+
+func TestInputScreenEscGoesToMainWhenNoParent(t *testing.T) {
+	m := New(nil)
+	m.screen = screenInput
+	m.parentItems = nil
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m2 := updated.(Model)
+	if m2.screen != screenMain {
+		t.Errorf("screen = %v, want screenMain", m2.screen)
+	}
+}
+
+func TestInputScreenEnterReturnsCmd(t *testing.T) {
+	m := New(nil)
+	m.screen = screenInput
+	m.inputBuffer = "0 5 * * *"
+	m.inputKey = "schedule"
+	m.inputPlugin = "update"
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd from Enter on input screen")
+	}
+}
+
+func TestInputScreenCtrlCQuits(t *testing.T) {
+	m := New(nil)
+	m.screen = screenInput
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	m2 := updated.(Model)
+	if !m2.quitting {
+		t.Error("ctrl+c should quit from input screen")
+	}
+	if cmd == nil {
+		t.Error("expected quit cmd")
+	}
+}
+
+func TestInputScreenSpaceAppendsSpace(t *testing.T) {
+	m := New(nil)
+	m.screen = screenInput
+	m.inputBuffer = "0"
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}})
+	m2 := updated.(Model)
+	if m2.inputBuffer != "0 " {
+		t.Errorf("inputBuffer = %q, want %q", m2.inputBuffer, "0 ")
+	}
+}
+
+func TestInputScreenLoadingGuardIgnoresKeys(t *testing.T) {
+	m := New(nil)
+	m.screen = screenInput
+	m.inputBuffer = "test"
+	m.loading = true
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	m2 := updated.(Model)
+	if m2.inputBuffer != "test" {
+		t.Errorf("inputBuffer = %q, want %q (loading should block input)", m2.inputBuffer, "test")
+	}
+	if cmd != nil {
+		t.Error("loading should produce nil cmd")
+	}
+}
+
+func TestSettingsResultMsgShowsDetail(t *testing.T) {
+	m := New(nil)
+	msg := settingsResultMsg{
+		detail: "Updated schedule to 0 4 * * *",
+	}
+	updated, _ := m.Update(msg)
+	m2 := updated.(Model)
+	if m2.screen != screenDetail {
+		t.Errorf("screen = %v, want screenDetail", m2.screen)
+	}
+	if !strings.Contains(m2.detail, "Updated schedule") {
+		t.Error("detail should contain settings result")
+	}
+}
+
+func TestSettingsResultMsgShowsError(t *testing.T) {
+	m := New(nil)
+	msg := settingsResultMsg{
+		err: fmt.Errorf("invalid cron expression"),
+	}
+	updated, _ := m.Update(msg)
+	m2 := updated.(Model)
+	if m2.screen != screenDetail {
+		t.Errorf("screen = %v, want screenDetail", m2.screen)
+	}
+	if !strings.Contains(m2.detail, "invalid cron") {
+		t.Error("detail should contain error message")
+	}
+}
+
+func TestSettingsResultMsgSanitizesError(t *testing.T) {
+	m := New(nil)
+	msg := settingsResultMsg{
+		err: fmt.Errorf("bad value: \x1b[31mred\x1b[0m"),
+	}
+	updated, _ := m.Update(msg)
+	m2 := updated.(Model)
+	if strings.Contains(m2.detail, "\x1b") {
+		t.Error("detail should not contain ANSI escape sequences")
+	}
+	if !strings.Contains(m2.detail, "bad value") {
+		t.Error("detail should contain the error text")
+	}
+}
+
+func TestAPIResultMsgSanitizesError(t *testing.T) {
+	m := New(nil)
+	msg := apiResultMsg{
+		err: fmt.Errorf("fail: \x1b[1mbold\x1b[0m"),
+	}
+	updated, _ := m.Update(msg)
+	m2 := updated.(Model)
+	if strings.Contains(m2.detail, "\x1b") {
+		t.Error("detail should not contain ANSI escape sequences")
+	}
+}
+
+// ---------- Settings action tests ----------
+
+func TestBoolOnOff(t *testing.T) {
+	if boolOnOff(true) != "ON" {
+		t.Error("boolOnOff(true) should be ON")
+	}
+	if boolOnOff(false) != "OFF" {
+		t.Error("boolOnOff(false) should be OFF")
+	}
+}
+
+func TestFormatSettingsResult(t *testing.T) {
+	res := &PluginSettingsUpdateResult{
+		Config: map[string]any{
+			"schedule":      "0 4 * * *",
+			"auto_security": true,
+		},
+		Warning: "test warning",
+	}
+	detail := formatSettingsResult("schedule", "0 4 * * *", res)
+	if !strings.Contains(detail, `"schedule"`) {
+		t.Error("should contain key name")
+	}
+	if !strings.Contains(detail, "test warning") {
+		t.Error("should contain warning")
+	}
+	if !strings.Contains(detail, "Current settings") {
+		t.Error("should contain settings header")
+	}
+}
+
+func TestFormatSettingsResultNoWarning(t *testing.T) {
+	res := &PluginSettingsUpdateResult{
+		Config: map[string]any{"schedule": "0 4 * * *"},
+	}
+	detail := formatSettingsResult("schedule", "0 4 * * *", res)
+	if strings.Contains(detail, "Warning") {
+		t.Error("should not contain warning when empty")
+	}
 }

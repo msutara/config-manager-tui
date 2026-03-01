@@ -18,6 +18,14 @@ The TUI is a separate Go module imported by the core binary at build time.
 - **Action triggering** — invoke plugin operations when the user selects a
   menu action.
 - **Result display** — show operation results and status in the TUI.
+- **Config editing** — edit plugin settings via the core settings API
+  (`PUT /api/v1/plugins/{name}/settings`). Supports text input (schedule),
+  toggles (auto-security), and cycling enum values (security source).
+  All editing actions fetch the current value from the API before acting
+  to avoid stale state. If the fetch fails or the value is missing/invalid,
+  an error is shown instead of proceeding with a potentially incorrect
+  mutation. Menu descriptions show "(unavailable)" or "(unknown)" when
+  the config endpoint is unreachable.
 
 ## 3. Non-responsibilities
 
@@ -63,14 +71,23 @@ p.Run()
 
 ## 6. Key Bindings
 
-| Key             | Action                                            |
-| --------------- | ------------------------------------------------- |
-| ↑ / k           | Move cursor up                                    |
-| ↓ / j           | Move cursor down                                  |
-| Enter           | Select menu item                                  |
+| Key             | Action                                             |
+| --------------- | -------------------------------------------------- |
+| ↑ / k           | Move cursor up                                     |
+| ↓ / j           | Move cursor down                                   |
+| Enter           | Select menu item                                   |
 | esc/q/backspace | Go back (in sub-menus); any key goes back (detail) |
-| q               | Quit the TUI (from main menu)                     |
-| ctrl+c          | Quit the TUI (from any screen)                    |
+| q               | Quit the TUI (from main menu)                      |
+| ctrl+c          | Quit the TUI (from any screen)                     |
+
+### Input Screen Keys
+
+| Key       | Action                    |
+| --------- | ------------------------- |
+| Type text | Appends to the input      |
+| Backspace | Delete last character     |
+| Enter     | Save the value            |
+| Esc       | Cancel and return to menu |
 
 ## 7. Menu Structure
 
@@ -82,6 +99,10 @@ Config Manager
 │   ├── Full Update
 │   ├── Security Update  (only when distro has a separate security source)
 │   ├── View Logs
+│   ├── View Settings
+│   ├── Edit Schedule          (opens text input screen)
+│   ├── Toggle Auto-Security   (immediate toggle ON/OFF)
+│   ├── Change Security Source  (cycles available ↔ always)
 │   └── Back
 ├── Network Manager
 │   ├── List Interfaces
@@ -104,7 +125,18 @@ esc/q/backspace.
 - Descriptions are rendered in faint style beside each title.
 - Footer shows key hints in faint text.
 
-## 9. Future Extensions
+## 9. Screens
+
+The TUI has four screen types:
+
+| Screen       | Purpose                                           |
+| ------------ | ------------------------------------------------- |
+| `screenMain` | Top-level menu (System Info, plugins, Quit)        |
+| `screenSub`  | Plugin sub-menu (actions, settings, Back)           |
+| `screenDetail` | Read-only result display (press any key to go back) |
+| `screenInput` | Text input for editing a config value              |
+
+## 10. Future Extensions
 
 - Confirmation dialogs for destructive actions.
 - Progress indicators for long-running operations.
