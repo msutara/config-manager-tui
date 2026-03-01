@@ -443,15 +443,15 @@ func actionEditSchedule(api *APIClient) func() tea.Cmd {
 			if err != nil {
 				return settingsResultMsg{err: err}
 			}
-			current := ""
-			if v, ok := ps.Config["schedule"].(string); ok {
-				current = v
+			v, ok := ps.Config["schedule"].(string)
+			if !ok {
+				return settingsResultMsg{err: fmt.Errorf("schedule setting is missing or invalid")}
 			}
 			return editInputMsg{
 				prompt:     "Enter new cron schedule (e.g. 0 3 * * *):",
 				key:        "schedule",
 				plugin:     "update",
-				currentVal: current,
+				currentVal: v,
 			}
 		}
 	}
@@ -465,11 +465,11 @@ func actionToggleAutoSecurity(api *APIClient) func() tea.Cmd {
 			if err != nil {
 				return settingsResultMsg{err: err}
 			}
-			current := false
-			if v, ok := ps.Config["auto_security"].(bool); ok {
-				current = v
+			v, ok := ps.Config["auto_security"].(bool)
+			if !ok {
+				return settingsResultMsg{err: fmt.Errorf("auto_security setting is missing or invalid")}
 			}
-			newVal := !current
+			newVal := !v
 			res, err := api.UpdatePluginSetting("update", "auto_security", newVal)
 			if err != nil {
 				return settingsResultMsg{err: err}

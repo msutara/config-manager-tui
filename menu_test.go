@@ -710,3 +710,82 @@ func TestActionEditSchedule_FetchError(t *testing.T) {
 		t.Fatal("expected error when settings fetch fails")
 	}
 }
+
+func TestActionToggleAutoSecurity_MissingKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"config": map[string]any{"schedule": "0 3 * * *"},
+		})
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	msg := actionToggleAutoSecurity(api)()()
+	res := msg.(settingsResultMsg)
+	if res.err == nil {
+		t.Fatal("expected error for missing auto_security")
+	}
+	if !strings.Contains(res.err.Error(), "missing or invalid") {
+		t.Errorf("error = %v, want 'missing or invalid'", res.err)
+	}
+}
+
+func TestActionToggleAutoSecurity_WrongType(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"config": map[string]any{"auto_security": "yes"},
+		})
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	msg := actionToggleAutoSecurity(api)()()
+	res := msg.(settingsResultMsg)
+	if res.err == nil {
+		t.Fatal("expected error for non-bool auto_security")
+	}
+	if !strings.Contains(res.err.Error(), "missing or invalid") {
+		t.Errorf("error = %v, want 'missing or invalid'", res.err)
+	}
+}
+
+func TestActionCycleSecuritySource_WrongType(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"config": map[string]any{"security_source": true},
+		})
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	msg := actionCycleSecuritySource(api)()()
+	res := msg.(settingsResultMsg)
+	if res.err == nil {
+		t.Fatal("expected error for non-string security_source")
+	}
+	if !strings.Contains(res.err.Error(), "missing or invalid") {
+		t.Errorf("error = %v, want 'missing or invalid'", res.err)
+	}
+}
+
+func TestActionEditSchedule_MissingKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"config": map[string]any{"auto_security": true},
+		})
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	msg := actionEditSchedule(api)()()
+	res, ok := msg.(settingsResultMsg)
+	if !ok {
+		t.Fatalf("expected settingsResultMsg, got %T", msg)
+	}
+	if res.err == nil {
+		t.Fatal("expected error for missing schedule")
+	}
+	if !strings.Contains(res.err.Error(), "missing or invalid") {
+		t.Errorf("error = %v, want 'missing or invalid'", res.err)
+	}
+}

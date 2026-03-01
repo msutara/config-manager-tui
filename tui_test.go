@@ -870,6 +870,33 @@ func TestSettingsResultMsgShowsError(t *testing.T) {
 	}
 }
 
+func TestSettingsResultMsgSanitizesError(t *testing.T) {
+	m := New(nil)
+	msg := settingsResultMsg{
+		err: fmt.Errorf("bad value: \x1b[31mred\x1b[0m"),
+	}
+	updated, _ := m.Update(msg)
+	m2 := updated.(Model)
+	if strings.Contains(m2.detail, "\x1b") {
+		t.Error("detail should not contain ANSI escape sequences")
+	}
+	if !strings.Contains(m2.detail, "bad value") {
+		t.Error("detail should contain the error text")
+	}
+}
+
+func TestAPIResultMsgSanitizesError(t *testing.T) {
+	m := New(nil)
+	msg := apiResultMsg{
+		err: fmt.Errorf("fail: \x1b[1mbold\x1b[0m"),
+	}
+	updated, _ := m.Update(msg)
+	m2 := updated.(Model)
+	if strings.Contains(m2.detail, "\x1b") {
+		t.Error("detail should not contain ANSI escape sequences")
+	}
+}
+
 // ---------- Settings action tests ----------
 
 func TestBoolOnOff(t *testing.T) {

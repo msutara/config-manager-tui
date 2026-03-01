@@ -120,7 +120,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case apiResultMsg:
 		if msg.err != nil {
-			m.detail = fmt.Sprintf("Error: %v\n\nPress any key to go back.", msg.err)
+			m.detail = fmt.Sprintf("Error: %s\n\nPress any key to go back.", sanitizeText(msg.err.Error()))
 		} else {
 			m.detail = msg.detail + "\n\nPress any key to go back."
 		}
@@ -131,7 +131,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case settingsResultMsg:
 		if msg.err != nil {
-			m.detail = fmt.Sprintf("Error: %v\n\nPress any key to go back.", msg.err)
+			m.detail = fmt.Sprintf("Error: %s\n\nPress any key to go back.", sanitizeText(msg.err.Error()))
 		} else {
 			m.detail = msg.detail + "\n\nPress any key to go back."
 		}
