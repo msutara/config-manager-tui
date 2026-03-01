@@ -674,3 +674,39 @@ func TestActionCycleSecuritySourceReverse(t *testing.T) {
 		t.Fatalf("unexpected error: %v", res.err)
 	}
 }
+
+func TestActionCycleSecuritySource_MissingKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"config": map[string]any{"schedule": "0 3 * * *"},
+		})
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	msg := actionCycleSecuritySource(api)()()
+	res := msg.(settingsResultMsg)
+	if res.err == nil {
+		t.Fatal("expected error for missing security_source")
+	}
+	if !strings.Contains(res.err.Error(), "missing or invalid") {
+		t.Errorf("error = %v, want 'missing or invalid'", res.err)
+	}
+}
+
+func TestActionEditSchedule_FetchError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	msg := actionEditSchedule(api)()()
+	res, ok := msg.(settingsResultMsg)
+	if !ok {
+		t.Fatalf("expected settingsResultMsg, got %T", msg)
+	}
+	if res.err == nil {
+		t.Fatal("expected error when settings fetch fails")
+	}
+}

@@ -439,12 +439,13 @@ func actionEditSchedule(api *APIClient) func() tea.Cmd {
 	return func() tea.Cmd {
 		return func() tea.Msg {
 			// Fetch current schedule to avoid stale prefill.
-			current := ""
 			ps, err := api.GetPluginSettings("update")
-			if err == nil {
-				if v, ok := ps.Config["schedule"].(string); ok {
-					current = v
-				}
+			if err != nil {
+				return settingsResultMsg{err: err}
+			}
+			current := ""
+			if v, ok := ps.Config["schedule"].(string); ok {
+				current = v
 			}
 			return editInputMsg{
 				prompt:     "Enter new cron schedule (e.g. 0 3 * * *):",
@@ -487,13 +488,18 @@ func actionCycleSecuritySource(api *APIClient) func() tea.Cmd {
 			if err != nil {
 				return settingsResultMsg{err: err}
 			}
-			current := "available"
-			if v, ok := ps.Config["security_source"].(string); ok {
-				current = v
+			v, ok := ps.Config["security_source"].(string)
+			if !ok {
+				return settingsResultMsg{err: fmt.Errorf("security_source setting is missing or invalid")}
 			}
-			newVal := "always"
-			if current == "always" {
+			var newVal string
+			switch v {
+			case "available":
+				newVal = "always"
+			case "always":
 				newVal = "available"
+			default:
+				return settingsResultMsg{err: fmt.Errorf("unexpected security_source value: %q", v)}
 			}
 			res, err := api.UpdatePluginSetting("update", "security_source", newVal)
 			if err != nil {

@@ -21,6 +21,11 @@ The TUI is a separate Go module imported by the core binary at build time.
 - **Config editing** — edit plugin settings via the core settings API
   (`PUT /api/v1/plugins/{name}/settings`). Supports text input (schedule),
   toggles (auto-security), and cycling enum values (security source).
+  All editing actions fetch the current value from the API before acting
+  to avoid stale state. If the fetch fails or the value is missing/invalid,
+  an error is shown instead of proceeding with a potentially incorrect
+  mutation. Menu descriptions show "(unavailable)" or "(unknown)" when
+  the config endpoint is unreachable.
 
 ## 3. Non-responsibilities
 
