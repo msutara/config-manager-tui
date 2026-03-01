@@ -521,9 +521,9 @@ func TestAPIClientGetUpdateConfig(t *testing.T) {
 			t.Errorf("unexpected method: %s", r.Method)
 		}
 		json.NewEncoder(w).Encode(map[string]any{
-			"auto_security_updates": true,
-			"security_available":    true,
-			"schedule":              "0 3 * * *",
+			"auto_security":      true,
+			"security_available": true,
+			"schedule":           "0 3 * * *",
 		})
 	}))
 	defer srv.Close()
@@ -536,6 +536,9 @@ func TestAPIClientGetUpdateConfig(t *testing.T) {
 	if cfg.SecurityAvailable == nil || !*cfg.SecurityAvailable {
 		t.Error("expected SecurityAvailable=true")
 	}
+	if cfg.AutoSecurity == nil || !*cfg.AutoSecurity {
+		t.Error("expected AutoSecurity=true")
+	}
 }
 
 func TestAPIClientGetUpdateConfig_Unavailable(t *testing.T) {
@@ -547,9 +550,9 @@ func TestAPIClientGetUpdateConfig_Unavailable(t *testing.T) {
 			t.Errorf("unexpected method: %s", r.Method)
 		}
 		json.NewEncoder(w).Encode(map[string]any{
-			"auto_security_updates": true,
-			"security_available":    false,
-			"schedule":              "0 3 * * *",
+			"auto_security":      true,
+			"security_available": false,
+			"schedule":           "0 3 * * *",
 		})
 	}))
 	defer srv.Close()
@@ -568,7 +571,7 @@ func TestAPIClientGetUpdateConfig_MissingField(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Older server or empty response — field absent.
 		json.NewEncoder(w).Encode(map[string]any{
-			"auto_security_updates": true,
+			"auto_security": true,
 		})
 	}))
 	defer srv.Close()
