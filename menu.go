@@ -290,35 +290,35 @@ func actionUpdateMenu(api *APIClient) func() tea.Cmd {
 				Action: actionUpdateViewSettings(api),
 			})
 
-			schedule := "0 3 * * *"
-			autoSec := true
-			secSource := "available"
+			scheduleDisplay := "(unavailable)"
+			autoSecDisplay := "(unknown)"
+			secSourceDisplay := "(unknown)"
 			if cfg != nil {
 				if cfg.Schedule != "" {
-					schedule = cfg.Schedule
+					scheduleDisplay = cfg.Schedule
 				}
 				if cfg.AutoSecurity != nil {
-					autoSec = *cfg.AutoSecurity
+					autoSecDisplay = boolOnOff(*cfg.AutoSecurity)
 				}
 				if cfg.SecuritySource != "" {
-					secSource = cfg.SecuritySource
+					secSourceDisplay = cfg.SecuritySource
 				}
 			}
 
 			items = append(items,
 				MenuItem{
 					Title:       "Edit Schedule",
-					Description: fmt.Sprintf("Current: %s", sanitizeText(schedule)),
-					Action:      actionEditSchedule(api, schedule),
+					Description: fmt.Sprintf("Current: %s", sanitizeText(scheduleDisplay)),
+					Action:      actionEditSchedule(api),
 				},
 				MenuItem{
 					Title:       "Toggle Auto-Security",
-					Description: fmt.Sprintf("Currently: %s", boolOnOff(autoSec)),
+					Description: fmt.Sprintf("Currently: %s", sanitizeText(autoSecDisplay)),
 					Action:      actionToggleAutoSecurity(api),
 				},
 				MenuItem{
 					Title:       "Change Security Source",
-					Description: fmt.Sprintf("Currently: %s", sanitizeText(secSource)),
+					Description: fmt.Sprintf("Currently: %s", sanitizeText(secSourceDisplay)),
 					Action:      actionCycleSecuritySource(api),
 				},
 			)
@@ -429,9 +429,17 @@ func actionUpdateViewSettings(api *APIClient) func() tea.Cmd {
 	}
 }
 
-func actionEditSchedule(api *APIClient, current string) func() tea.Cmd {
+func actionEditSchedule(api *APIClient) func() tea.Cmd {
 	return func() tea.Cmd {
 		return func() tea.Msg {
+			// Fetch current schedule to avoid stale prefill.
+			current := ""
+			ps, err := api.GetPluginSettings("update")
+			if err == nil {
+				if v, ok := ps.Config["schedule"].(string); ok {
+					current = v
+				}
+			}
 			return editInputMsg{
 				prompt:     "Enter new cron schedule (e.g. 0 3 * * *):",
 				key:        "schedule",
@@ -459,7 +467,7 @@ func actionToggleAutoSecurity(api *APIClient) func() tea.Cmd {
 			if err != nil {
 				return settingsResultMsg{err: err}
 			}
-			detail := formatSettingsResult("auto_security", boolOnOff(newVal), res)
+			detail := formatSettingsResult("auto_security", sanitizeValue(newVal), res)
 			return settingsResultMsg{detail: detail}
 		}
 	}

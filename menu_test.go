@@ -541,8 +541,15 @@ func TestUpdateMenuShowsCurrentValues(t *testing.T) {
 }
 
 func TestActionEditScheduleReturnsEditInputMsg(t *testing.T) {
-	api := NewAPIClient("http://localhost:0")
-	action := actionEditSchedule(api, "0 3 * * *")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"config": map[string]any{"schedule": "0 3 * * *", "auto_security": true},
+		})
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	action := actionEditSchedule(api)
 	cmd := action()
 	msg := cmd()
 	eim, ok := msg.(editInputMsg)
