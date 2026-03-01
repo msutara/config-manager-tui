@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -448,5 +449,221 @@ func TestActionGenericPlugin_BackAction(t *testing.T) {
 	}
 	if backSub.title != "" {
 		t.Errorf("Back should return empty title, got %q", backSub.title)
+	}
+}
+
+// ---------- Update settings menu tests ----------
+
+func TestUpdateMenuIncludesSettingsItems(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/plugins/update/config":
+			json.NewEncoder(w).Encode(map[string]any{
+				"schedule":           "0 3 * * *",
+				"auto_security":      true,
+				"security_source":    "available",
+				"security_available": true,
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	action := actionUpdateMenu(api)
+	cmd := action()
+	msg := cmd()
+	sub, ok := msg.(subMenuMsg)
+	if !ok {
+		t.Fatalf("expected subMenuMsg, got %T", msg)
+	}
+
+	// Verify settings items are present.
+	titles := make([]string, len(sub.items))
+	for i, item := range sub.items {
+		titles[i] = item.Title
+	}
+
+	wantItems := []string{
+		"View Settings",
+		"Edit Schedule",
+		"Toggle Auto-Security",
+		"Change Security Source",
+	}
+	for _, want := range wantItems {
+		found := false
+		for _, title := range titles {
+			if title == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("menu should contain %q, got titles: %v", want, titles)
+		}
+	}
+}
+
+func TestUpdateMenuShowsCurrentValues(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"schedule":           "0 5 * * 1",
+			"auto_security":      false,
+			"security_source":    "always",
+			"security_available": true,
+		})
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	action := actionUpdateMenu(api)
+	msg := action()()
+	sub := msg.(subMenuMsg)
+
+	// Find Edit Schedule and check its description shows the current value.
+	for _, item := range sub.items {
+		switch item.Title {
+		case "Edit Schedule":
+			if !strings.Contains(item.Description, "0 5 * * 1") {
+				t.Errorf("Edit Schedule description = %q, want to contain '0 5 * * 1'", item.Description)
+			}
+		case "Toggle Auto-Security":
+			if !strings.Contains(item.Description, "OFF") {
+				t.Errorf("Toggle description = %q, want to contain 'OFF'", item.Description)
+			}
+		case "Change Security Source":
+			if !strings.Contains(item.Description, "always") {
+				t.Errorf("Security Source description = %q, want to contain 'always'", item.Description)
+			}
+		}
+	}
+}
+
+func TestActionEditScheduleReturnsEditInputMsg(t *testing.T) {
+	api := NewAPIClient("http://localhost:0")
+	action := actionEditSchedule(api, "0 3 * * *")
+	cmd := action()
+	msg := cmd()
+	eim, ok := msg.(editInputMsg)
+	if !ok {
+		t.Fatalf("expected editInputMsg, got %T", msg)
+	}
+	if eim.key != "schedule" {
+		t.Errorf("key = %q, want 'schedule'", eim.key)
+	}
+	if eim.currentVal != "0 3 * * *" {
+		t.Errorf("currentVal = %q, want '0 3 * * *'", eim.currentVal)
+	}
+	if eim.plugin != "update" {
+		t.Errorf("plugin = %q, want 'update'", eim.plugin)
+	}
+}
+
+func TestActionToggleAutoSecurity(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			// GET /settings returns current state.
+			json.NewEncoder(w).Encode(map[string]any{
+				"config": map[string]any{"auto_security": true, "schedule": "0 3 * * *"},
+			})
+			return
+		}
+		var body struct {
+			Key   string `json:"key"`
+			Value any    `json:"value"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body.Key != "auto_security" {
+			t.Errorf("key = %q, want 'auto_security'", body.Key)
+		}
+		// Value should be the opposite: toggling from true → false.
+		if body.Value != false {
+			t.Errorf("value = %v, want false (toggled from true)", body.Value)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"config": map[string]any{"auto_security": false},
+		})
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	action := actionToggleAutoSecurity(api)
+	cmd := action()
+	msg := cmd()
+	res, ok := msg.(settingsResultMsg)
+	if !ok {
+		t.Fatalf("expected settingsResultMsg, got %T", msg)
+	}
+	if res.err != nil {
+		t.Fatalf("unexpected error: %v", res.err)
+	}
+}
+
+func TestActionCycleSecuritySource(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			json.NewEncoder(w).Encode(map[string]any{
+				"config": map[string]any{"security_source": "available"},
+			})
+			return
+		}
+		var body struct {
+			Key   string `json:"key"`
+			Value any    `json:"value"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body.Key != "security_source" {
+			t.Errorf("key = %q, want 'security_source'", body.Key)
+		}
+		if body.Value != "always" {
+			t.Errorf("value = %v, want 'always' (cycled from 'available')", body.Value)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"config": map[string]any{"security_source": "always"},
+		})
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	action := actionCycleSecuritySource(api)
+	cmd := action()
+	msg := cmd()
+	res, ok := msg.(settingsResultMsg)
+	if !ok {
+		t.Fatalf("expected settingsResultMsg, got %T", msg)
+	}
+	if res.err != nil {
+		t.Fatalf("unexpected error: %v", res.err)
+	}
+}
+
+func TestActionCycleSecuritySourceReverse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			json.NewEncoder(w).Encode(map[string]any{
+				"config": map[string]any{"security_source": "always"},
+			})
+			return
+		}
+		var body struct {
+			Value any `json:"value"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body.Value != "available" {
+			t.Errorf("value = %v, want 'available' (cycled from 'always')", body.Value)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"config": map[string]any{"security_source": "available"},
+		})
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	action := actionCycleSecuritySource(api)
+	msg := action()()
+	res := msg.(settingsResultMsg)
+	if res.err != nil {
+		t.Fatalf("unexpected error: %v", res.err)
 	}
 }

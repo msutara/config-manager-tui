@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -579,5 +580,162 @@ func TestAPIClientGetUpdateConfig_MissingField(t *testing.T) {
 	}
 	if cfg.SecurityAvailable != nil {
 		t.Errorf("expected SecurityAvailable=nil for missing field, got %v", *cfg.SecurityAvailable)
+	}
+}
+
+// ---------- Plugin settings API tests ----------
+
+func TestAPIClientGetPluginSettings(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/plugins/update/settings" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("unexpected method: %s", r.Method)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"config": map[string]any{
+				"schedule":        "0 3 * * *",
+				"auto_security":   true,
+				"security_source": "available",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	ps, err := client.GetPluginSettings("update")
+	if err != nil {
+		t.Fatalf("GetPluginSettings: %v", err)
+	}
+	if ps.Config["schedule"] != "0 3 * * *" {
+		t.Errorf("schedule = %v, want 0 3 * * *", ps.Config["schedule"])
+	}
+	if ps.Config["auto_security"] != true {
+		t.Errorf("auto_security = %v, want true", ps.Config["auto_security"])
+	}
+}
+
+func TestAPIClientGetPluginSettings_NotConfigurable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotImplemented)
+		json.NewEncoder(w).Encode(map[string]string{"error": "not configurable"})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.GetPluginSettings("update")
+	if err == nil {
+		t.Fatal("expected error for 501 response")
+	}
+	if !strings.Contains(err.Error(), "501") {
+		t.Errorf("error should mention 501: %v", err)
+	}
+}
+
+func TestAPIClientUpdatePluginSetting(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/plugins/update/settings" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPut {
+			t.Errorf("unexpected method: %s", r.Method)
+		}
+		var body struct {
+			Key   string `json:"key"`
+			Value any    `json:"value"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body.Key != "schedule" {
+			t.Errorf("key = %q, want schedule", body.Key)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"config": map[string]any{
+				"schedule":        "0 4 * * *",
+				"auto_security":   true,
+				"security_source": "available",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	res, err := client.UpdatePluginSetting("update", "schedule", "0 4 * * *")
+	if err != nil {
+		t.Fatalf("UpdatePluginSetting: %v", err)
+	}
+	if res.Config["schedule"] != "0 4 * * *" {
+		t.Errorf("schedule = %v, want 0 4 * * *", res.Config["schedule"])
+	}
+}
+
+func TestAPIClientUpdatePluginSetting_WithWarning(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"config":  map[string]any{"schedule": "0 4 * * *"},
+			"warning": "scheduler restart required",
+		})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	res, err := client.UpdatePluginSetting("update", "schedule", "0 4 * * *")
+	if err != nil {
+		t.Fatalf("UpdatePluginSetting: %v", err)
+	}
+	if res.Warning != "scheduler restart required" {
+		t.Errorf("warning = %q, want 'scheduler restart required'", res.Warning)
+	}
+}
+
+func TestAPIClientUpdatePluginSetting_ValidationError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid cron expression"})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.UpdatePluginSetting("update", "schedule", "not-a-cron")
+	if err == nil {
+		t.Fatal("expected error for 400 response")
+	}
+	if !strings.Contains(err.Error(), "400") {
+		t.Errorf("error should mention 400: %v", err)
+	}
+}
+
+func TestAPIClientUpdatePluginSettingAuthHeader(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer secret-token" {
+			t.Errorf("Authorization = %q, want Bearer secret-token", got)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"config": map[string]any{},
+		})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClientWithToken(srv.URL, "secret-token")
+	_, err := client.UpdatePluginSetting("update", "schedule", "0 4 * * *")
+	if err != nil {
+		t.Fatalf("UpdatePluginSetting with auth: %v", err)
+	}
+}
+
+func TestAPIClientUpdatePluginSetting_MalformedJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, "{broken")
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.UpdatePluginSetting("update", "schedule", "0 4 * * *")
+	if err == nil {
+		t.Fatal("expected error for malformed JSON response")
+	}
+	if !strings.Contains(err.Error(), "decode") {
+		t.Errorf("error should mention decode: %v", err)
 	}
 }

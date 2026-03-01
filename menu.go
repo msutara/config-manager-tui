@@ -262,12 +262,15 @@ func actionUpdateMenu(api *APIClient) func() tea.Cmd {
 				{Title: "Full Update", Description: "Run full system update", Action: actionUpdateRunFull(api)},
 			}
 
-			// Show Security Update by default; only hide when the plugin
-			// explicitly reports it as unavailable.  Transient API errors
-			// or missing fields should not silently remove the menu item.
+			// Fetch config for both the security-available check and the
+			// settings items.  Transient errors default to showing everything.
+			var cfg *UpdateConfig
 			showSecurity := true
-			if cfg, err := api.GetUpdateConfig(); err == nil && cfg.SecurityAvailable != nil {
-				showSecurity = *cfg.SecurityAvailable
+			if c, err := api.GetUpdateConfig(); err == nil {
+				cfg = c
+				if c.SecurityAvailable != nil {
+					showSecurity = *c.SecurityAvailable
+				}
 			}
 
 			if showSecurity {
@@ -279,10 +282,50 @@ func actionUpdateMenu(api *APIClient) func() tea.Cmd {
 
 			items = append(items,
 				MenuItem{Title: "View Logs", Description: "Recent update activity", Action: actionUpdateLogs(api)},
-				MenuItem{Title: "Back", Description: "Return to main menu", Action: func() tea.Cmd {
-					return func() tea.Msg { return subMenuMsg{} }
-				}},
 			)
+
+			// --- Settings section ---
+			items = append(items, MenuItem{
+				Title: "View Settings", Description: "Current update configuration",
+				Action: actionUpdateViewSettings(api),
+			})
+
+			schedule := "0 3 * * *"
+			autoSec := true
+			secSource := "available"
+			if cfg != nil {
+				if cfg.Schedule != "" {
+					schedule = cfg.Schedule
+				}
+				if cfg.AutoSecurity != nil {
+					autoSec = *cfg.AutoSecurity
+				}
+				if cfg.SecuritySource != "" {
+					secSource = cfg.SecuritySource
+				}
+			}
+
+			items = append(items,
+				MenuItem{
+					Title:       "Edit Schedule",
+					Description: fmt.Sprintf("Current: %s", sanitizeText(schedule)),
+					Action:      actionEditSchedule(api, schedule),
+				},
+				MenuItem{
+					Title:       "Toggle Auto-Security",
+					Description: fmt.Sprintf("Currently: %s", boolOnOff(autoSec)),
+					Action:      actionToggleAutoSecurity(api),
+				},
+				MenuItem{
+					Title:       "Change Security Source",
+					Description: fmt.Sprintf("Currently: %s", sanitizeText(secSource)),
+					Action:      actionCycleSecuritySource(api),
+				},
+			)
+
+			items = append(items, MenuItem{Title: "Back", Description: "Return to main menu", Action: func() tea.Cmd {
+				return func() tea.Msg { return subMenuMsg{} }
+			}})
 
 			return subMenuMsg{
 				title: "Update Manager",
@@ -365,6 +408,94 @@ func actionUpdateLogs(api *APIClient) func() tea.Cmd {
 			return apiResultMsg{detail: detail}
 		}
 	}
+}
+
+// --- Update Settings Actions ---
+
+func actionUpdateViewSettings(api *APIClient) func() tea.Cmd {
+	return func() tea.Cmd {
+		return func() tea.Msg {
+			ps, err := api.GetPluginSettings("update")
+			if err != nil {
+				return apiResultMsg{err: err}
+			}
+			var b strings.Builder
+			b.WriteString("Update Plugin Settings\n\n")
+			for k, v := range ps.Config {
+				fmt.Fprintf(&b, "  %-20s %s\n", sanitizeText(k)+":", sanitizeValue(v))
+			}
+			return apiResultMsg{detail: b.String()}
+		}
+	}
+}
+
+func actionEditSchedule(api *APIClient, current string) func() tea.Cmd {
+	return func() tea.Cmd {
+		return func() tea.Msg {
+			return editInputMsg{
+				prompt:     "Enter new cron schedule (e.g. 0 3 * * *):",
+				key:        "schedule",
+				plugin:     "update",
+				currentVal: current,
+			}
+		}
+	}
+}
+
+func actionToggleAutoSecurity(api *APIClient) func() tea.Cmd {
+	return func() tea.Cmd {
+		return func() tea.Msg {
+			// Fetch current value to avoid stale-closure toggling.
+			ps, err := api.GetPluginSettings("update")
+			if err != nil {
+				return settingsResultMsg{err: err}
+			}
+			current := true
+			if v, ok := ps.Config["auto_security"].(bool); ok {
+				current = v
+			}
+			newVal := !current
+			res, err := api.UpdatePluginSetting("update", "auto_security", newVal)
+			if err != nil {
+				return settingsResultMsg{err: err}
+			}
+			detail := formatSettingsResult("auto_security", boolOnOff(newVal), res)
+			return settingsResultMsg{detail: detail}
+		}
+	}
+}
+
+func actionCycleSecuritySource(api *APIClient) func() tea.Cmd {
+	return func() tea.Cmd {
+		return func() tea.Msg {
+			// Fetch current value to avoid stale-closure cycling.
+			ps, err := api.GetPluginSettings("update")
+			if err != nil {
+				return settingsResultMsg{err: err}
+			}
+			current := "available"
+			if v, ok := ps.Config["security_source"].(string); ok {
+				current = v
+			}
+			newVal := "always"
+			if current == "always" {
+				newVal = "available"
+			}
+			res, err := api.UpdatePluginSetting("update", "security_source", newVal)
+			if err != nil {
+				return settingsResultMsg{err: err}
+			}
+			detail := formatSettingsResult("security_source", newVal, res)
+			return settingsResultMsg{detail: detail}
+		}
+	}
+}
+
+func boolOnOff(b bool) string {
+	if b {
+		return "ON"
+	}
+	return "OFF"
 }
 
 // --- Network Plugin Sub-Menu ---

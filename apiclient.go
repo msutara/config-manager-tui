@@ -87,9 +87,23 @@ type RunStatus struct {
 	Log       string `json:"log"`
 }
 
-// UpdateConfig models the subset of /api/v1/plugins/update/config used by the TUI.
+// UpdateConfig models the response from /api/v1/plugins/update/config.
 type UpdateConfig struct {
-	SecurityAvailable *bool `json:"security_available"`
+	Schedule          string `json:"schedule"`
+	AutoSecurity      *bool  `json:"auto_security"`
+	SecuritySource    string `json:"security_source"`
+	SecurityAvailable *bool  `json:"security_available"`
+}
+
+// PluginSettings models the response from GET /api/v1/plugins/{name}/settings.
+type PluginSettings struct {
+	Config map[string]any `json:"config"`
+}
+
+// UpdateSettingsResult models the response from PUT /api/v1/plugins/{name}/settings.
+type UpdateSettingsResult struct {
+	Config  map[string]any `json:"config"`
+	Warning string         `json:"warning,omitempty"`
 }
 
 // --- Network plugin types ---
@@ -246,6 +260,33 @@ func (c *APIClient) GetUpdateConfig() (*UpdateConfig, error) {
 	return &cfg, nil
 }
 
+// GetPluginSettings fetches a plugin's configurable settings via the core
+// settings endpoint (GET /api/v1/plugins/{name}/settings).
+func (c *APIClient) GetPluginSettings(name string) (*PluginSettings, error) {
+	var ps PluginSettings
+	if err := c.getJSON("/api/v1/plugins/"+name+"/settings", &ps); err != nil {
+		return nil, err
+	}
+	return &ps, nil
+}
+
+// UpdatePluginSetting changes a single setting key via the core settings
+// endpoint (PUT /api/v1/plugins/{name}/settings).
+func (c *APIClient) UpdatePluginSetting(name, key string, value any) (*UpdateSettingsResult, error) {
+	payload, err := json.Marshal(struct {
+		Key   string `json:"key"`
+		Value any    `json:"value"`
+	}{Key: key, Value: value})
+	if err != nil {
+		return nil, err
+	}
+	var r UpdateSettingsResult
+	if err := c.putJSON("/api/v1/plugins/"+name+"/settings", string(payload), &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
 // GetUpdateLogs fetches the last update run status.
 func (c *APIClient) GetUpdateLogs() (*RunStatus, error) {
 	var rs RunStatus
@@ -327,6 +368,32 @@ func (c *APIClient) postJSON(path, body string, out interface{}) error {
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 		b, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort error body
 		return fmt.Errorf("POST %s: status %d: %s", path, resp.StatusCode, truncateBody(b))
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("decode %s: %w", path, err)
+	}
+	return nil
+}
+
+func (c *APIClient) putJSON(path, body string, out interface{}) error {
+	req, err := http.NewRequest(http.MethodPut, c.baseURL+path, strings.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort error body
+		return fmt.Errorf("PUT %s: status %d: %s", path, resp.StatusCode, truncateBody(b))
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
