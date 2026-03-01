@@ -383,15 +383,15 @@ func sanitizeValue(v any) string {
 }
 
 // formatSettingsResult builds a human-readable detail string from a config update.
-func formatSettingsResult(key, value string, res *UpdateSettingsResult) string {
+func formatSettingsResult(key, value string, res *PluginSettingsUpdateResult) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Updated %q to %q\n", key, value)
+	fmt.Fprintf(&b, "Updated %q to %q\n", sanitizeText(key), sanitizeText(value)) //nolint:errcheck // writes to strings.Builder
 	if res.Warning != "" {
-		fmt.Fprintf(&b, "\nWarning: %s\n", sanitizeText(res.Warning))
+		fmt.Fprintf(&b, "\nWarning: %s\n", sanitizeText(res.Warning)) //nolint:errcheck // writes to strings.Builder
 	}
-	b.WriteString("\nCurrent settings:\n")
+	b.WriteString("\nCurrent settings:\n") //nolint:errcheck // writes to strings.Builder
 	for k, v := range res.Config {
-		fmt.Fprintf(&b, "  %-20s %s\n", sanitizeText(k)+":", sanitizeValue(v))
+		fmt.Fprintf(&b, "  %-20s %s\n", sanitizeText(k)+":", sanitizeValue(v)) //nolint:errcheck // writes to strings.Builder
 	}
 	return b.String()
 }

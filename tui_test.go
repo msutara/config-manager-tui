@@ -882,7 +882,7 @@ func TestBoolOnOff(t *testing.T) {
 }
 
 func TestFormatSettingsResult(t *testing.T) {
-	res := &UpdateSettingsResult{
+	res := &PluginSettingsUpdateResult{
 		Config: map[string]any{
 			"schedule":      "0 4 * * *",
 			"auto_security": true,
@@ -902,7 +902,7 @@ func TestFormatSettingsResult(t *testing.T) {
 }
 
 func TestFormatSettingsResultNoWarning(t *testing.T) {
-	res := &UpdateSettingsResult{
+	res := &PluginSettingsUpdateResult{
 		Config: map[string]any{"schedule": "0 4 * * *"},
 	}
 	detail := formatSettingsResult("schedule", "0 4 * * *", res)

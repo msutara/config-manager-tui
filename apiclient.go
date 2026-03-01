@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -100,8 +101,8 @@ type PluginSettings struct {
 	Config map[string]any `json:"config"`
 }
 
-// UpdateSettingsResult models the response from PUT /api/v1/plugins/{name}/settings.
-type UpdateSettingsResult struct {
+// PluginSettingsUpdateResult models the response from PUT /api/v1/plugins/{name}/settings.
+type PluginSettingsUpdateResult struct {
 	Config  map[string]any `json:"config"`
 	Warning string         `json:"warning,omitempty"`
 }
@@ -260,9 +261,15 @@ func (c *APIClient) GetUpdateConfig() (*UpdateConfig, error) {
 	return &cfg, nil
 }
 
+// validPluginName matches only safe plugin identifiers (lowercase alphanum + hyphens).
+var validPluginName = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
+
 // GetPluginSettings fetches a plugin's configurable settings via the core
 // settings endpoint (GET /api/v1/plugins/{name}/settings).
 func (c *APIClient) GetPluginSettings(name string) (*PluginSettings, error) {
+	if !validPluginName.MatchString(name) {
+		return nil, fmt.Errorf("invalid plugin name: %q", name)
+	}
 	var ps PluginSettings
 	if err := c.getJSON("/api/v1/plugins/"+name+"/settings", &ps); err != nil {
 		return nil, err
@@ -272,7 +279,10 @@ func (c *APIClient) GetPluginSettings(name string) (*PluginSettings, error) {
 
 // UpdatePluginSetting changes a single setting key via the core settings
 // endpoint (PUT /api/v1/plugins/{name}/settings).
-func (c *APIClient) UpdatePluginSetting(name, key string, value any) (*UpdateSettingsResult, error) {
+func (c *APIClient) UpdatePluginSetting(name, key string, value any) (*PluginSettingsUpdateResult, error) {
+	if !validPluginName.MatchString(name) {
+		return nil, fmt.Errorf("invalid plugin name: %q", name)
+	}
 	payload, err := json.Marshal(struct {
 		Key   string `json:"key"`
 		Value any    `json:"value"`
@@ -280,7 +290,7 @@ func (c *APIClient) UpdatePluginSetting(name, key string, value any) (*UpdateSet
 	if err != nil {
 		return nil, err
 	}
-	var r UpdateSettingsResult
+	var r PluginSettingsUpdateResult
 	if err := c.putJSON("/api/v1/plugins/"+name+"/settings", string(payload), &r); err != nil {
 		return nil, err
 	}

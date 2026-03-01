@@ -739,3 +739,27 @@ func TestAPIClientUpdatePluginSetting_MalformedJSON(t *testing.T) {
 		t.Errorf("error should mention decode: %v", err)
 	}
 }
+
+func TestAPIClientGetPluginSettings_InvalidName(t *testing.T) {
+	api := NewAPIClient("http://localhost")
+	for _, bad := range []string{"../etc", "up/date", "foo bar", "", "-start", "end-"} {
+		_, err := api.GetPluginSettings(bad)
+		if err == nil {
+			t.Errorf("expected error for invalid plugin name %q", bad)
+		}
+		if !strings.Contains(err.Error(), "invalid plugin name") {
+			t.Errorf("error should mention invalid plugin name for %q: %v", bad, err)
+		}
+	}
+}
+
+func TestAPIClientUpdatePluginSetting_InvalidName(t *testing.T) {
+	api := NewAPIClient("http://localhost")
+	_, err := api.UpdatePluginSetting("../traversal", "key", "val")
+	if err == nil {
+		t.Fatal("expected error for invalid plugin name")
+	}
+	if !strings.Contains(err.Error(), "invalid plugin name") {
+		t.Errorf("error should mention invalid plugin name: %v", err)
+	}
+}

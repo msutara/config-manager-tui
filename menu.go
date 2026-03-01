@@ -420,9 +420,9 @@ func actionUpdateViewSettings(api *APIClient) func() tea.Cmd {
 				return apiResultMsg{err: err}
 			}
 			var b strings.Builder
-			b.WriteString("Update Plugin Settings\n\n")
+			b.WriteString("Update Plugin Settings\n\n") //nolint:errcheck // writes to strings.Builder
 			for k, v := range ps.Config {
-				fmt.Fprintf(&b, "  %-20s %s\n", sanitizeText(k)+":", sanitizeValue(v))
+				fmt.Fprintf(&b, "  %-20s %s\n", sanitizeText(k)+":", sanitizeValue(v)) //nolint:errcheck // writes to strings.Builder
 			}
 			return apiResultMsg{detail: b.String()}
 		}
