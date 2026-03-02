@@ -29,7 +29,11 @@ The TUI is a separate Go module imported by the core binary at build time.
   `Theme` struct. `DefaultTheme()` provides the built-in look. Render
   functions generally accept `Theme` as a parameter (no global style variables
   for core elements, with minor inline styles permitted for simple separators
-  or spacing).
+  or spacing). Custom themes are loaded from YAML via `ThemeFromYAML([]byte)`.
+  Four built-in themes ship with the binary: `default`, `high-contrast`,
+  `nord`, and `solarized-dark`. Partial overrides are supported — only the
+  fields present in the YAML are changed; everything else inherits from
+  `DefaultTheme()`. Use `SetTheme()` on the model before `Run()` to apply.
 - **Config editing** — edit plugin settings via the core settings API
   (`PUT /api/v1/plugins/{name}/settings`). Supports text input (schedule),
   toggles (auto-security), and cycling enum values (security source).
@@ -183,7 +187,59 @@ a standard detail response.
   Esc/q: cancel
 ```
 
-## 10. Future Extensions
+## 10. Theme System
 
-- YAML theme config with built-in themes (Phase 5).
+The TUI ships four built-in themes and supports custom YAML themes.
+
+### Built-in Themes
+
+| Name | Description |
+| --- | --- |
+| `default` | Bright blue/cyan — matches the original hardcoded colours |
+| `high-contrast` | Maximum readability — white-on-black, bold badges |
+| `nord` | Muted arctic tones from the Nord colour palette |
+| `solarized-dark` | Ethan Schoonover's Solarized Dark palette |
+
+### YAML Format
+
+Themes are defined in YAML with two optional sections — `colors` and `glyphs`.
+All fields are optional; omitted fields inherit from `DefaultTheme()`.
+
+```yaml
+colors:
+  header:      {fg: "111", bold: true}
+  footer:      {fg: "60", faint: true}
+  selected:    {fg: "152", bold: true}
+  normal:      {fg: "252"}
+  description: {fg: "60", faint: true}
+  cursor:      {fg: "152"}
+  connected:   {fg: "108"}
+  standalone:  {fg: "222"}
+  confirm_yes: {fg: "108", bold: true}
+  confirm_no:  {fg: "174", bold: true}
+  status_bar:  {fg: "60", faint: true}
+  spinner:     {fg: "111"}
+
+glyphs:
+  cursor: "▸ "
+  separator: "─"
+  separator_width: 40
+  connected_badge: "● connected"
+  standalone_badge: "● standalone"
+```
+
+Colour values are strings — ANSI 256 numbers (`"14"`) or hex (`"#ff5733"`).
+
+### API
+
+- `ThemeFromYAML(data []byte) (Theme, error)` — parse YAML into a Theme.
+- `BuiltinTheme(name string) (Theme, bool)` — look up a built-in by name (case-insensitive).
+- `BuiltinThemeNames() []string` — sorted list of built-in names.
+- `Model.SetTheme(t Theme)` — replace the active theme before `Run()`.
+
+The core binary reads the user's config, resolves the theme (built-in name or
+custom YAML file path), and calls `SetTheme()` before launching the TUI.
+
+## 11. Future Extensions
+
 - Log viewer within the TUI.
