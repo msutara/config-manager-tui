@@ -382,12 +382,11 @@ func actionUpdateStatus(api *APIClient) func() tea.Cmd {
 func actionUpdateRunFull(api *APIClient) func() tea.Cmd {
 	return func() tea.Cmd {
 		return func() tea.Msg {
-			r, err := api.RunUpdate("full")
+			_, err := api.TriggerJob("update.full")
 			if err != nil {
 				return apiResultMsg{err: err}
 			}
-			detail := fmt.Sprintf("Status: %s\nType:   %s", sanitizeText(r.Status), sanitizeText(r.Type))
-			return apiResultMsg{detail: detail}
+			return jobAcceptedMsg{jobID: "update.full", title: "Full Update"}
 		}
 	}
 }
@@ -395,12 +394,11 @@ func actionUpdateRunFull(api *APIClient) func() tea.Cmd {
 func actionUpdateRunSecurity(api *APIClient) func() tea.Cmd {
 	return func() tea.Cmd {
 		return func() tea.Msg {
-			r, err := api.RunUpdate("security")
+			_, err := api.TriggerJob("update.security")
 			if err != nil {
 				return apiResultMsg{err: err}
 			}
-			detail := fmt.Sprintf("Status: %s\nType:   %s", sanitizeText(r.Status), sanitizeText(r.Type))
-			return apiResultMsg{detail: detail}
+			return jobAcceptedMsg{jobID: "update.security", title: "Security Update"}
 		}
 	}
 }

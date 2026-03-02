@@ -789,3 +789,61 @@ func TestActionEditSchedule_MissingKey(t *testing.T) {
 		t.Errorf("error = %v, want 'missing or invalid'", res.err)
 	}
 }
+
+func TestActionUpdateRunFull_ReturnsJobAcceptedMsg(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/jobs/trigger" || r.Method != http.MethodPost {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(TriggerJobResult{Status: "accepted", JobID: "update.full"})
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	action := actionUpdateRunFull(api)
+	cmd := action()
+	msg := cmd()
+
+	accepted, ok := msg.(jobAcceptedMsg)
+	if !ok {
+		t.Fatalf("expected jobAcceptedMsg, got %T", msg)
+	}
+	if accepted.jobID != "update.full" {
+		t.Errorf("jobID: got %q, want update.full", accepted.jobID)
+	}
+	if accepted.title != "Full Update" {
+		t.Errorf("title: got %q, want Full Update", accepted.title)
+	}
+}
+
+func TestActionUpdateRunSecurity_ReturnsJobAcceptedMsg(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/jobs/trigger" || r.Method != http.MethodPost {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(TriggerJobResult{Status: "accepted", JobID: "update.security"})
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	action := actionUpdateRunSecurity(api)
+	cmd := action()
+	msg := cmd()
+
+	accepted, ok := msg.(jobAcceptedMsg)
+	if !ok {
+		t.Fatalf("expected jobAcceptedMsg, got %T", msg)
+	}
+	if accepted.jobID != "update.security" {
+		t.Errorf("jobID: got %q, want update.security", accepted.jobID)
+	}
+	if accepted.title != "Security Update" {
+		t.Errorf("title: got %q, want Security Update", accepted.title)
+	}
+}

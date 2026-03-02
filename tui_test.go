@@ -1344,3 +1344,278 @@ func TestConfirmFlow_Submenu_Cancel(t *testing.T) {
 		t.Error("confirmAction should be cleared")
 	}
 }
+
+// ---------- Progress screen (Phase 4) ----------
+
+func TestJobAcceptedMsg_TransitionsToProgress(t *testing.T) {
+	m := New(nil)
+	m.parentItems = []MenuItem{{Title: "Back"}}
+	m.screen = screenSub
+	m.loading = true
+
+	updated, cmd := m.Update(jobAcceptedMsg{jobID: "update.full", title: "Full Update"})
+	um := updated.(Model)
+	if um.screen != screenProgress {
+		t.Fatalf("screen: got %d, want screenProgress", um.screen)
+	}
+	if um.progressJobID != "update.full" {
+		t.Errorf("progressJobID: got %q, want update.full", um.progressJobID)
+	}
+	if um.progressTitle != "Full Update" {
+		t.Errorf("progressTitle: got %q, want Full Update", um.progressTitle)
+	}
+	if um.loading {
+		t.Error("loading should be false after transitioning to progress")
+	}
+	if cmd == nil {
+		t.Fatal("cmd should not be nil — tick should start")
+	}
+}
+
+func TestTickMsg_AdvancesSpinner(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressJobID = "update.full"
+	m.progressTitle = "Full Update"
+	m.progressTicks = 0
+
+	// Tick 1: should advance and NOT poll (odd tick).
+	updated, cmd := m.Update(tickMsg{})
+	um := updated.(Model)
+	if um.progressTicks != 1 {
+		t.Errorf("ticks: got %d, want 1", um.progressTicks)
+	}
+	if cmd == nil {
+		t.Fatal("cmd should not be nil — next tick expected")
+	}
+}
+
+func TestTickMsg_PollsOnEvenTick(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressJobID = "update.full"
+	m.progressTicks = 1 // next tick will be 2 (even) → poll
+
+	updated, cmd := m.Update(tickMsg{})
+	um := updated.(Model)
+	if um.progressTicks != 2 {
+		t.Errorf("ticks: got %d, want 2", um.progressTicks)
+	}
+	if cmd == nil {
+		t.Fatal("cmd should not be nil — tick+poll batch expected")
+	}
+}
+
+func TestTickMsg_IgnoredOutsideProgress(t *testing.T) {
+	m := New(nil)
+	m.screen = screenMain
+
+	updated, cmd := m.Update(tickMsg{})
+	um := updated.(Model)
+	if um.screen != screenMain {
+		t.Errorf("screen should remain screenMain")
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil — tick not applicable outside progress")
+	}
+}
+
+func TestJobPollMsg_Completed(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressJobID = "update.full"
+	m.progressTitle = "Full Update"
+
+	updated, cmd := m.Update(jobPollMsg{
+		jobID: "update.full",
+		run:   &JobRun{Status: "completed", Duration: "8s"},
+	})
+	um := updated.(Model)
+	if um.screen != screenDetail {
+		t.Fatalf("screen: got %d, want screenDetail", um.screen)
+	}
+	if !strings.Contains(um.detail, "completed") {
+		t.Errorf("detail should contain 'completed': %q", um.detail)
+	}
+	if !strings.Contains(um.detail, "8s") {
+		t.Errorf("detail should contain duration '8s': %q", um.detail)
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil — polling stops on completion")
+	}
+}
+
+func TestJobPollMsg_Failed(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressJobID = "update.full"
+	m.progressTitle = "Full Update"
+
+	updated, cmd := m.Update(jobPollMsg{
+		jobID: "update.full",
+		run:   &JobRun{Status: "failed", Error: "apt-get exited 100"},
+	})
+	um := updated.(Model)
+	if um.screen != screenDetail {
+		t.Fatalf("screen: got %d, want screenDetail", um.screen)
+	}
+	if !strings.Contains(um.detail, "failed") {
+		t.Errorf("detail should contain 'failed': %q", um.detail)
+	}
+	if !strings.Contains(um.detail, "apt-get exited 100") {
+		t.Errorf("detail should contain error message: %q", um.detail)
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil — polling stops on failure")
+	}
+}
+
+func TestJobPollMsg_FailedGenericError(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressJobID = "update.full"
+	m.progressTitle = "Full Update"
+
+	updated, _ := m.Update(jobPollMsg{
+		jobID: "update.full",
+		run:   &JobRun{Status: "failed"},
+	})
+	um := updated.(Model)
+	if !strings.Contains(um.detail, "see server logs") {
+		t.Errorf("detail should contain generic error: %q", um.detail)
+	}
+}
+
+func TestJobPollMsg_Running(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressJobID = "update.full"
+
+	updated, cmd := m.Update(jobPollMsg{
+		jobID: "update.full",
+		run:   &JobRun{Status: "running"},
+	})
+	um := updated.(Model)
+	if um.screen != screenProgress {
+		t.Errorf("screen should remain screenProgress, got %d", um.screen)
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil — polling continues via next tick")
+	}
+}
+
+func TestJobPollMsg_TransientError(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressJobID = "update.full"
+
+	updated, cmd := m.Update(jobPollMsg{jobID: "update.full", err: fmt.Errorf("connection refused")})
+	um := updated.(Model)
+	if um.screen != screenProgress {
+		t.Errorf("screen should remain screenProgress on transient error")
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil — keep polling via next tick")
+	}
+}
+
+func TestJobPollMsg_IgnoredOutsideProgress(t *testing.T) {
+	m := New(nil)
+	m.screen = screenMain
+
+	updated, _ := m.Update(jobPollMsg{run: &JobRun{Status: "completed"}})
+	um := updated.(Model)
+	if um.screen != screenMain {
+		t.Errorf("screen should remain screenMain")
+	}
+}
+
+func TestProgressScreen_EscDismisses(t *testing.T) {
+	m := New(nil)
+	m.parentItems = []MenuItem{{Title: "Back"}}
+	m.screen = screenProgress
+	m.progressJobID = "update.full"
+	m.progressTitle = "Full Update"
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	um := updated.(Model)
+	if um.screen != screenSub {
+		t.Errorf("screen: got %d, want screenSub", um.screen)
+	}
+	if um.progressJobID != "" {
+		t.Error("progressJobID should be cleared after dismiss")
+	}
+}
+
+func TestProgressScreen_QDismisses(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressJobID = "update.full"
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	um := updated.(Model)
+	if um.screen != screenMain {
+		t.Errorf("screen: got %d, want screenMain (no parentItems)", um.screen)
+	}
+}
+
+func TestProgressScreen_View(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressJobID = "update.full"
+	m.progressTitle = "Full Update"
+	m.progressTicks = 3
+
+	view := m.View()
+	if !strings.Contains(view, "Full Update") {
+		t.Errorf("view should contain progress title: %q", view)
+	}
+	if !strings.Contains(view, "Elapsed:") {
+		t.Errorf("view should contain elapsed time: %q", view)
+	}
+	if !strings.Contains(view, "Esc: cancel") {
+		t.Errorf("view should contain dismiss hint: %q", view)
+	}
+}
+
+func TestJobPollMsg_Completed_NoDuration(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressJobID = "update.full"
+	m.progressTitle = "Full Update"
+
+	updated, _ := m.Update(jobPollMsg{
+		jobID: "update.full",
+		run:   &JobRun{Status: "completed"}, // no Duration field
+	})
+	um := updated.(Model)
+	if um.screen != screenDetail {
+		t.Fatalf("screen: got %d, want screenDetail", um.screen)
+	}
+	if !strings.Contains(um.detail, "completed") {
+		t.Errorf("detail should contain 'completed': %q", um.detail)
+	}
+	// Fallback elapsed time should be present (not the API's Duration field).
+	if um.detail == "" {
+		t.Error("detail should not be empty")
+	}
+}
+
+func TestJobPollMsg_StalePollDiscarded(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressJobID = "update.security" // current job
+
+	// Stale poll from a previously dismissed job.
+	updated, cmd := m.Update(jobPollMsg{
+		jobID: "update.full", // wrong job ID
+		run:   &JobRun{Status: "completed", Duration: "5s"},
+	})
+	um := updated.(Model)
+	if um.screen != screenProgress {
+		t.Errorf("screen should remain screenProgress when poll is stale, got %d", um.screen)
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil for stale poll")
+	}
+}

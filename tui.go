@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -15,11 +16,12 @@ import (
 type screen int
 
 const (
-	screenMain    screen = iota // top-level menu
-	screenSub                   // plugin sub-menu
-	screenDetail                // read-only detail view (press any key to go back)
-	screenInput                 // text input for editing a config value
-	screenConfirm               // confirmation dialog (y/n)
+	screenMain     screen = iota // top-level menu
+	screenSub                    // plugin sub-menu
+	screenDetail                 // read-only detail view (press any key to go back)
+	screenInput                  // text input for editing a config value
+	screenConfirm                // confirmation dialog (y/n)
+	screenProgress               // progress view with spinner and polling
 )
 
 // ConnectionMode indicates how the TUI is connected to the API.
@@ -60,6 +62,12 @@ type Model struct {
 	confirmTitle  string         // e.g. "Run Full Update?"
 	confirmMsg    string         // e.g. "This will update all packages..."
 	confirmAction func() tea.Cmd // action to execute on confirmation
+
+	// Progress screen state (screenProgress).
+	progressJobID string    // job being tracked (e.g. "update.full")
+	progressTitle string    // display title (e.g. "Full Update")
+	progressStart time.Time // when the job was triggered
+	progressTicks int       // elapsed tick count (for spinner frame)
 
 	// Status bar data (fetched once on startup).
 	hostname  string
@@ -142,6 +150,33 @@ type settingsResultMsg struct {
 	err    error
 }
 
+// jobAcceptedMsg tells Update to switch to the progress screen and start polling.
+type jobAcceptedMsg struct {
+	jobID string
+	title string
+}
+
+// jobPollMsg carries the result of a poll to GET /api/v1/jobs/{id}/runs/latest.
+// The jobID field ties the result to a specific progress session so stale
+// responses from a dismissed job are discarded.
+type jobPollMsg struct {
+	jobID string
+	run   *JobRun
+	err   error
+}
+
+// tickMsg drives the progress spinner and triggers polling.
+type tickMsg time.Time
+
+// spinnerFrames are braille characters cycled for the progress spinner.
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+func tickCmd() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
 // Update implements tea.Model. It handles keyboard input for menu navigation.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -170,6 +205,69 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenDetail
 		m.statusMsg = ""
 		m.loading = false
+		return m, nil
+
+	case jobAcceptedMsg:
+		m.loading = false
+		m.statusMsg = ""
+		m.screen = screenProgress
+		m.progressJobID = msg.jobID
+		m.progressTitle = msg.title
+		m.progressStart = time.Now()
+		m.progressTicks = 0
+		return m, tickCmd()
+
+	case tickMsg:
+		if m.screen != screenProgress {
+			return m, nil
+		}
+		m.progressTicks++
+		// Poll every 2 ticks (2 seconds).
+		if m.progressTicks%2 == 0 {
+			api := m.api
+			jobID := m.progressJobID
+			return m, tea.Batch(tickCmd(), func() tea.Msg {
+				run, err := api.GetJobRunLatest(jobID)
+				return jobPollMsg{jobID: jobID, run: run, err: err}
+			})
+		}
+		return m, tickCmd()
+
+	case jobPollMsg:
+		if m.screen != screenProgress {
+			return m, nil
+		}
+		// Discard stale poll results from a previously dismissed progress session.
+		if msg.jobID != m.progressJobID {
+			return m, nil
+		}
+		if msg.err != nil {
+			// Transient poll errors — keep polling.
+			return m, nil
+		}
+		switch msg.run.Status {
+		case "completed":
+			elapsed := time.Since(m.progressStart).Truncate(time.Second)
+			m.detail = fmt.Sprintf("✓ %s completed\n\nDuration: %s",
+				sanitizeText(m.progressTitle), elapsed)
+			if msg.run.Duration != "" {
+				m.detail = fmt.Sprintf("✓ %s completed\n\nDuration: %s",
+					sanitizeText(m.progressTitle), sanitizeText(msg.run.Duration))
+			}
+			m.detail += "\n\nPress any key to go back."
+			m.screen = screenDetail
+			return m, nil
+		case "failed":
+			errMsg := "see server logs"
+			if msg.run.Error != "" {
+				errMsg = sanitizeText(msg.run.Error)
+			}
+			m.detail = fmt.Sprintf("✗ %s failed\n\nError: %s\n\nPress any key to go back.",
+				sanitizeText(m.progressTitle), errMsg)
+			m.screen = screenDetail
+			return m, nil
+		}
+		// Still running — continue polling via next tick.
 		return m, nil
 
 	case editInputMsg:
@@ -213,6 +311,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Confirmation dialog handles y/n.
 		if m.screen == screenConfirm {
 			return m.handleConfirmKey(msg)
+		}
+
+		// Progress screen: Esc dismisses back to menu.
+		if m.screen == screenProgress {
+			if msg.String() == "esc" || msg.String() == "q" {
+				m.goBack()
+				return m, nil
+			}
+			return m, nil
 		}
 
 		// In detail view, any other key goes back.
@@ -375,6 +482,15 @@ func (m *Model) goBack() {
 		m.inputPrompt = ""
 		m.inputKey = ""
 		m.inputPlugin = ""
+	case screenProgress:
+		if m.parentItems != nil {
+			m.screen = screenSub
+		} else {
+			m.screen = screenMain
+		}
+		m.progressJobID = ""
+		m.progressTitle = ""
+		m.progressTicks = 0
 	}
 	m.detail = ""
 	m.statusMsg = ""
@@ -394,6 +510,8 @@ func (m Model) View() string {
 		return m.viewInput()
 	case screenConfirm:
 		return m.viewConfirm()
+	case screenProgress:
+		return m.viewProgress()
 	case screenSub:
 		return m.viewSubMenu()
 	default:
@@ -460,6 +578,20 @@ func (m Model) viewConfirm() string {
 	yes := m.theme.ConfirmYes.Render("[Y] Yes")
 	no := m.theme.ConfirmNo.Render("[N] No")
 	b.WriteString("  " + yes + "    " + no + "\n") //nolint:errcheck // writes to strings.Builder
+	return b.String()
+}
+
+func (m Model) viewProgress() string {
+	var b strings.Builder
+	b.WriteString(renderHeader(m.theme)) //nolint:errcheck // writes to strings.Builder
+
+	frame := spinnerFrames[m.progressTicks%len(spinnerFrames)]
+	spinner := m.theme.Spinner.Render(frame)
+	elapsed := time.Since(m.progressStart).Truncate(time.Second)
+
+	b.WriteString("  " + spinner + " " + m.theme.Header.Render(m.progressTitle) + "\n\n") //nolint:errcheck // writes to strings.Builder
+	b.WriteString(fmt.Sprintf("  Elapsed: %s\n\n", elapsed))                              //nolint:errcheck // writes to strings.Builder
+	b.WriteString("  " + m.theme.Footer.Render("Esc: cancel") + "\n")                     //nolint:errcheck // writes to strings.Builder
 	return b.String()
 }
 

@@ -691,6 +691,132 @@ func TestAPIClientUpdatePluginSetting_WithWarning(t *testing.T) {
 	}
 }
 
+// ---------- Job tracking API tests ----------
+
+func TestAPIClientTriggerJob(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/jobs/trigger" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("unexpected method: %s", r.Method)
+		}
+		var body struct {
+			JobID string `json:"job_id"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body.JobID != "update.full" {
+			t.Errorf("job_id = %q, want update.full", body.JobID)
+		}
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(TriggerJobResult{Status: "accepted", JobID: "update.full"})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	res, err := client.TriggerJob("update.full")
+	if err != nil {
+		t.Fatalf("TriggerJob: %v", err)
+	}
+	if res.Status != "accepted" {
+		t.Errorf("status = %q, want accepted", res.Status)
+	}
+	if res.JobID != "update.full" {
+		t.Errorf("job_id = %q, want update.full", res.JobID)
+	}
+}
+
+func TestAPIClientTriggerJob_Error(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintln(w, `{"error":{"code":"job_not_found"}}`)
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.TriggerJob("missing.job")
+	if err == nil {
+		t.Fatal("expected error for 404")
+	}
+}
+
+func TestAPIClientGetJobRunLatest_Running(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/jobs/update.full/runs/latest" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(JobRun{
+			JobID:     "update.full",
+			Status:    "running",
+			StartedAt: "2026-03-02T04:00:00Z",
+		})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	run, err := client.GetJobRunLatest("update.full")
+	if err != nil {
+		t.Fatalf("GetJobRunLatest: %v", err)
+	}
+	if run.Status != "running" {
+		t.Errorf("status = %q, want running", run.Status)
+	}
+}
+
+func TestAPIClientGetJobRunLatest_Completed(t *testing.T) {
+	end := "2026-03-02T04:00:10Z"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(JobRun{
+			JobID:     "update.full",
+			Status:    "completed",
+			StartedAt: "2026-03-02T04:00:00Z",
+			EndedAt:   &end,
+			Duration:  "10s",
+		})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	run, err := client.GetJobRunLatest("update.full")
+	if err != nil {
+		t.Fatalf("GetJobRunLatest: %v", err)
+	}
+	if run.Status != "completed" {
+		t.Errorf("status = %q, want completed", run.Status)
+	}
+	if run.Duration != "10s" {
+		t.Errorf("duration = %q, want 10s", run.Duration)
+	}
+}
+
+func TestAPIClientGetJobRunLatest_InvalidJobID(t *testing.T) {
+	client := NewAPIClient("http://localhost:1")
+	_, err := client.GetJobRunLatest("../etc/passwd")
+	if err == nil {
+		t.Fatal("expected error for invalid job ID")
+	}
+	if !strings.Contains(err.Error(), "invalid job ID") {
+		t.Errorf("error should mention invalid job ID: %v", err)
+	}
+}
+
+func TestAPIClientGetJobRunLatest_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, `{"error":"internal"}`)
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.GetJobRunLatest("update.full")
+	if err == nil {
+		t.Fatal("expected error for 500 response")
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("error should mention status 500: %v", err)
+	}
+}
+
 func TestAPIClientUpdatePluginSetting_ValidationError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)

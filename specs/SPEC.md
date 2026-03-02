@@ -139,18 +139,47 @@ esc/q/backspace.
 
 ## 9. Screens
 
-The TUI has five screen types:
+The TUI has six screen types:
 
-| Screen          | Purpose                                              |
-| --------------- | ---------------------------------------------------- |
-| `screenMain`    | Top-level menu (System Info, plugins, Quit)          |
-| `screenSub`     | Plugin sub-menu (actions, settings, Back)            |
-| `screenDetail`  | Read-only result display (press any key to go back)  |
-| `screenInput`   | Text input for editing a config value                |
-| `screenConfirm` | Y/N confirmation dialog for destructive actions      |
+| Screen           | Purpose                                              |
+| ---------------- | ---------------------------------------------------- |
+| `screenMain`     | Top-level menu (System Info, plugins, Quit)          |
+| `screenSub`      | Plugin sub-menu (actions, settings, Back)            |
+| `screenDetail`   | Read-only result display (press any key to go back)  |
+| `screenInput`    | Text input for editing a config value                |
+| `screenConfirm`  | Y/N confirmation dialog for destructive actions      |
+| `screenProgress` | Job progress indicator with spinner and polling      |
+
+### Progress Screen (`screenProgress`)
+
+When an update action is confirmed (e.g., "Run Full Update"), the TUI
+transitions to a progress screen instead of showing a raw API response.
+Other confirmed POST actions (e.g., generic plugin endpoints) still show
+a standard detail response.
+
+1. The action calls `TriggerJob(jobID)` via `POST /api/v1/jobs/trigger`.
+2. On success, a `jobAcceptedMsg` transitions to `screenProgress`.
+3. A braille spinner (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`) animates at 1 s intervals.
+4. Every 2 s the TUI polls `GET /api/v1/jobs/{id}/runs/latest` for status.
+5. **Completed** — screen transitions to `screenDetail` with a success
+   summary including duration.
+6. **Failed** — screen transitions to `screenDetail` with error details.
+7. **Esc / q** — dismisses the progress screen; the job continues running
+   on the server in the background.
+8. Transient poll errors (network blips) are silently ignored — the next
+   tick retries automatically.
+9. Stale poll results from a previously dismissed job are discarded via
+   job ID matching.
+
+```text
+  ⠹ Full Update
+
+  Elapsed: 12s
+
+  Esc: cancel
+```
 
 ## 10. Future Extensions
 
-- Progress indicators for long-running operations (Phase 4).
 - YAML theme config with built-in themes (Phase 5).
 - Log viewer within the TUI.
