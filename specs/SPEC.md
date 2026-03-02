@@ -259,8 +259,8 @@ custom YAML file path), and calls `SetTheme()` before launching the TUI.
 ## 11. Security
 
 All untrusted text rendered in the terminal is passed through `sanitizeText()`
-which strips ANSI escape sequences and control characters to prevent terminal
-injection. Multi-line bodies use `sanitizeBody()` for similar protection.
+which strips Unicode control characters (including ESC) to prevent terminal
+escape sequences from executing. Multi-line bodies use `sanitizeBody()` for similar protection.
 
 ## 12. Future Extensions
 
