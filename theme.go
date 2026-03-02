@@ -185,8 +185,8 @@ func ThemeFromYAML(data []byte) (Theme, error) {
 			t.Separator = *g.Separator
 		}
 		if g.SepWidth != nil {
-			if *g.SepWidth < 0 {
-				return Theme{}, fmt.Errorf("invalid theme: separator_width must be >= 0, got %d", *g.SepWidth)
+			if *g.SepWidth < 0 || *g.SepWidth > 500 {
+				return Theme{}, fmt.Errorf("invalid theme: separator_width must be 0–500, got %d", *g.SepWidth)
 			}
 			t.SepWidth = *g.SepWidth
 		}

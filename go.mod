@@ -5,6 +5,7 @@ go 1.24.0
 require (
 	github.com/charmbracelet/bubbletea v1.3.4
 	github.com/charmbracelet/lipgloss v1.1.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -26,7 +27,6 @@ require (
 	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.3.8 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 // config-manager-core is not a direct Go dependency. The TUI receives plugin
