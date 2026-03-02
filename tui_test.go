@@ -1662,6 +1662,27 @@ func TestJobPollMsg_StalePollDiscarded(t *testing.T) {
 	}
 }
 
+func TestJobPollMsg_SameJobID_StaleSession(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressJobID = "update.full"
+	m.progressSession = 2 // current session
+
+	// Poll from a previous session with the same jobID but old session counter.
+	updated, cmd := m.Update(jobPollMsg{
+		jobID:   "update.full",
+		session: 1, // stale session
+		run:     &JobRun{Status: "completed", Duration: "5s"},
+	})
+	um := updated.(Model)
+	if um.screen != screenProgress {
+		t.Errorf("screen should remain screenProgress for stale session, got %d", um.screen)
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil for stale session poll")
+	}
+}
+
 func TestJobPollMsg_PersistentErrorSurfacesAfterThreshold(t *testing.T) {
 	m := New(nil)
 	m.screen = screenProgress

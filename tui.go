@@ -68,12 +68,13 @@ type Model struct {
 	confirmAction func() tea.Cmd // action to execute on confirmation
 
 	// Progress screen state (screenProgress).
-	progressJobID string    // job being tracked (e.g. "update.full")
-	progressTitle string    // display title (e.g. "Full Update")
-	progressStart time.Time // when the job was triggered
-	progressTicks int       // elapsed tick count (for spinner frame)
-	pollInFlight  bool      // true while a poll request is pending
-	pollErrors    int       // consecutive poll errors (surfaces after maxPollErrors)
+	progressJobID   string    // job being tracked (e.g. "update.full")
+	progressTitle   string    // display title (e.g. "Full Update")
+	progressStart   time.Time // when the job was triggered
+	progressTicks   int       // elapsed tick count (for spinner frame)
+	pollInFlight    bool      // true while a poll request is pending
+	pollErrors      int       // consecutive poll errors (surfaces after maxPollErrors)
+	progressSession int       // monotonic counter to detect stale polls from re-triggered same jobID
 
 	// Status bar data (fetched once on startup).
 	hostname  string
@@ -163,12 +164,13 @@ type jobAcceptedMsg struct {
 }
 
 // jobPollMsg carries the result of a poll to GET /api/v1/jobs/{id}/runs/latest.
-// The jobID field ties the result to a specific progress session so stale
-// responses from a dismissed job are discarded.
+// The jobID and session fields tie the result to a specific progress session so
+// stale responses from a dismissed or re-triggered job are discarded.
 type jobPollMsg struct {
-	jobID string
-	run   *JobRun
-	err   error
+	jobID   string
+	session int
+	run     *JobRun
+	err     error
 }
 
 // tickMsg drives the progress spinner and triggers polling.
@@ -223,6 +225,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.progressTicks = 0
 		m.pollInFlight = false
 		m.pollErrors = 0
+		m.progressSession++
 		return m, tickCmd()
 
 	case tickMsg:
@@ -234,10 +237,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.progressTicks%2 == 0 && !m.pollInFlight {
 			api := m.api
 			jobID := m.progressJobID
+			sess := m.progressSession
 			m.pollInFlight = true
 			return m, tea.Batch(tickCmd(), func() tea.Msg {
 				run, err := api.GetJobRunLatest(jobID)
-				return jobPollMsg{jobID: jobID, run: run, err: err}
+				return jobPollMsg{jobID: jobID, session: sess, run: run, err: err}
 			})
 		}
 		return m, tickCmd()
@@ -246,8 +250,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.screen != screenProgress {
 			return m, nil
 		}
-		// Discard stale poll results from a previously dismissed progress session.
-		if msg.jobID != m.progressJobID {
+		// Discard stale poll results from a previously dismissed or re-triggered progress session.
+		if msg.jobID != m.progressJobID || msg.session != m.progressSession {
 			return m, nil
 		}
 		m.pollInFlight = false
