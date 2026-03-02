@@ -7,55 +7,61 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var (
-	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
-	footerStyle   = lipgloss.NewStyle().Faint(true)
-	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
-	normalStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
-	descStyle     = lipgloss.NewStyle().Faint(true)
-	cursorGlyph   = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Render("▸ ")
-	blankGlyph    = "  "
-	connBadge     = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Render("● connected")
-	standBadge    = lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Render("● standalone")
-)
-
 // renderHeader returns the styled header block for the TUI.
-func renderHeader() string {
-	title := headerStyle.Render("Config Manager")
-	separator := lipgloss.NewStyle().Faint(true).Render(strings.Repeat("─", 40))
+func renderHeader(th Theme) string {
+	title := th.Header.Render("Config Manager")
+	separator := th.Footer.Render(strings.Repeat(th.Separator, th.SepWidth))
 	return "\n  " + title + "\n  " + separator + "\n\n"
 }
 
 // renderFooter returns the styled footer with key hints and connection mode badge.
-func renderFooter(mode ConnectionMode) string {
-	badge := modeBadge(mode)
-	return "\n  " + footerStyle.Render("↑/↓: navigate • enter: select • q: quit") + "  " + badge + "\n"
+func renderFooter(mode ConnectionMode, hostname, uptime string, th Theme) string {
+	badge := modeBadge(mode, th)
+	hints := th.Footer.Render("↑/↓: navigate • enter: select • q: quit")
+	status := renderStatusBar(hostname, uptime, th)
+	return "\n  " + hints + "  " + status + badge + "\n"
 }
 
 // renderSubFooter returns a footer with back-navigation hints and connection mode badge.
-func renderSubFooter(mode ConnectionMode) string {
-	badge := modeBadge(mode)
-	return "\n  " + footerStyle.Render("↑/↓: navigate • enter: select • esc/q/backspace: back") + "  " + badge + "\n"
+func renderSubFooter(mode ConnectionMode, hostname, uptime string, th Theme) string {
+	badge := modeBadge(mode, th)
+	hints := th.Footer.Render("↑/↓: navigate • enter: select • esc/q/backspace: back")
+	status := renderStatusBar(hostname, uptime, th)
+	return "\n  " + hints + "  " + status + badge + "\n"
 }
 
-func modeBadge(mode ConnectionMode) string {
-	if mode == ModeConnected {
-		return connBadge
+// renderStatusBar returns a formatted hostname and uptime string for the footer.
+func renderStatusBar(hostname, uptime string, th Theme) string {
+	if hostname == "" {
+		return ""
 	}
-	return standBadge
+	s := hostname
+	if uptime != "" {
+		s += " | up " + uptime
+	}
+	return th.StatusBar.Render(s) + "  "
+}
+
+func modeBadge(mode ConnectionMode, th Theme) string {
+	if mode == ModeConnected {
+		return th.ConnBadgeStyle.Render(th.ConnBadgeText)
+	}
+	return th.StandBadgeStyle.Render(th.StandBadgeText)
 }
 
 // renderMainMenu renders the list of menu items with a cursor indicator.
-func renderMainMenu(items []MenuItem, cursor int) string {
+func renderMainMenu(items []MenuItem, cursor int, th Theme) string {
 	var b strings.Builder
+	cursorGlyph := th.CursorStyle.Render(th.Cursor)
+	blankGlyph := strings.Repeat(" ", lipgloss.Width(cursorGlyph))
 	for i, item := range items {
 		if i == cursor {
-			title := selectedStyle.Render(item.Title)
-			desc := descStyle.Render(item.Description)
+			title := th.Selected.Render(item.Title)
+			desc := th.Description.Render(item.Description)
 			fmt.Fprintf(&b, "  %s%s  %s\n", cursorGlyph, title, desc) //nolint:errcheck // writes to strings.Builder
 		} else {
-			title := normalStyle.Render(item.Title)
-			desc := descStyle.Render(item.Description)
+			title := th.Normal.Render(item.Title)
+			desc := th.Description.Render(item.Description)
 			fmt.Fprintf(&b, "  %s%s  %s\n", blankGlyph, title, desc) //nolint:errcheck // writes to strings.Builder
 		}
 	}
@@ -63,18 +69,20 @@ func renderMainMenu(items []MenuItem, cursor int) string {
 }
 
 // renderPluginView renders a plugin-specific submenu body (without footer).
-func renderPluginView(pluginName string, items []MenuItem, cursor int) string {
+func renderPluginView(pluginName string, items []MenuItem, cursor int, th Theme) string {
 	var b strings.Builder
-	name := headerStyle.Render(pluginName)
+	name := th.Header.Render(pluginName)
+	cursorGlyph := th.CursorStyle.Render(th.Cursor)
+	blankGlyph := strings.Repeat(" ", lipgloss.Width(cursorGlyph))
 	fmt.Fprintf(&b, "\n  %s\n\n", name) //nolint:errcheck // writes to strings.Builder
 	for i, item := range items {
 		if i == cursor {
-			title := selectedStyle.Render(item.Title)
-			desc := descStyle.Render(item.Description)
+			title := th.Selected.Render(item.Title)
+			desc := th.Description.Render(item.Description)
 			fmt.Fprintf(&b, "  %s%s  %s\n", cursorGlyph, title, desc) //nolint:errcheck // writes to strings.Builder
 		} else {
-			title := normalStyle.Render(item.Title)
-			desc := descStyle.Render(item.Description)
+			title := th.Normal.Render(item.Title)
+			desc := th.Description.Render(item.Description)
 			fmt.Fprintf(&b, "  %s%s  %s\n", blankGlyph, title, desc) //nolint:errcheck // writes to strings.Builder
 		}
 	}
