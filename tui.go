@@ -12,6 +12,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// maxPollErrors is the number of consecutive poll failures before the
+// progress screen surfaces the error to the user.
+const maxPollErrors = 5
+
 // screen identifies which TUI screen is active.
 type screen int
 
@@ -69,6 +73,7 @@ type Model struct {
 	progressStart time.Time // when the job was triggered
 	progressTicks int       // elapsed tick count (for spinner frame)
 	pollInFlight  bool      // true while a poll request is pending
+	pollErrors    int       // consecutive poll errors (surfaces after maxPollErrors)
 
 	// Status bar data (fetched once on startup).
 	hostname  string
@@ -217,6 +222,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.progressStart = time.Now()
 		m.progressTicks = 0
 		m.pollInFlight = false
+		m.pollErrors = 0
 		return m, tickCmd()
 
 	case tickMsg:
@@ -246,9 +252,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.pollInFlight = false
 		if msg.err != nil {
-			// Transient poll errors — keep polling.
+			m.pollErrors++
+			if m.pollErrors >= maxPollErrors {
+				errText := sanitizeText(msg.err.Error())
+				m.detail = fmt.Sprintf("✗ %s\n\nError while checking job status:\n%s\n\nPress any key to go back.",
+					sanitizeText(m.progressTitle), errText)
+				m.screen = screenDetail
+				return m, nil
+			}
+			// Transient poll error — keep polling.
 			return m, nil
 		}
+		m.pollErrors = 0 // reset on successful poll
 		switch msg.run.Status {
 		case "completed":
 			elapsed := time.Since(m.progressStart).Truncate(time.Second)
@@ -495,7 +510,9 @@ func (m *Model) goBack() {
 		m.progressJobID = ""
 		m.progressTitle = ""
 		m.progressTicks = 0
+		m.progressStart = time.Time{}
 		m.pollInFlight = false
+		m.pollErrors = 0
 	}
 	m.detail = ""
 	m.statusMsg = ""

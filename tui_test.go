@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -1658,5 +1659,75 @@ func TestJobPollMsg_StalePollDiscarded(t *testing.T) {
 	}
 	if cmd != nil {
 		t.Error("cmd should be nil for stale poll")
+	}
+}
+
+func TestJobPollMsg_PersistentErrorSurfacesAfterThreshold(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressJobID = "update.full"
+	m.progressTitle = "Full Update"
+
+	// First maxPollErrors-1 errors should stay on progress screen.
+	for i := 0; i < maxPollErrors-1; i++ {
+		updated, _ := m.Update(jobPollMsg{jobID: "update.full", err: fmt.Errorf("connection refused")})
+		m = updated.(Model)
+		if m.screen != screenProgress {
+			t.Fatalf("error %d/%d should stay on progress, got screen %d", i+1, maxPollErrors-1, m.screen)
+		}
+		if m.pollErrors != i+1 {
+			t.Fatalf("pollErrors should be %d, got %d", i+1, m.pollErrors)
+		}
+	}
+
+	// The maxPollErrors-th error should transition to detail with error message.
+	updated, cmd := m.Update(jobPollMsg{jobID: "update.full", err: fmt.Errorf("connection refused")})
+	um := updated.(Model)
+	if um.screen != screenDetail {
+		t.Errorf("should transition to detail after %d errors, got screen %d", maxPollErrors, um.screen)
+	}
+	if !strings.Contains(um.detail, "Full Update") {
+		t.Error("detail should contain the job title")
+	}
+	if !strings.Contains(um.detail, "connection refused") {
+		t.Error("detail should contain the error text")
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil after surfacing error")
+	}
+}
+
+func TestJobPollMsg_ErrorCounterResetsOnSuccess(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressJobID = "update.full"
+	m.pollErrors = maxPollErrors - 1 // one more error would surface
+
+	// A successful poll resets the counter.
+	updated, _ := m.Update(jobPollMsg{jobID: "update.full", run: &JobRun{Status: "running"}})
+	um := updated.(Model)
+	if um.pollErrors != 0 {
+		t.Errorf("pollErrors should reset to 0 on success, got %d", um.pollErrors)
+	}
+	if um.screen != screenProgress {
+		t.Error("should remain on progress for running status")
+	}
+}
+
+func TestGoBack_ClearsProgressStart(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressStart = time.Now()
+	m.progressJobID = "update.full"
+	m.progressTitle = "Full Update"
+	m.pollErrors = 3
+
+	m.goBack()
+
+	if !m.progressStart.IsZero() {
+		t.Error("progressStart should be zero after goBack")
+	}
+	if m.pollErrors != 0 {
+		t.Error("pollErrors should be 0 after goBack")
 	}
 }

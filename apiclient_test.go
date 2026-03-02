@@ -740,6 +740,17 @@ func TestAPIClientTriggerJob_Error(t *testing.T) {
 	}
 }
 
+func TestAPIClientTriggerJob_InvalidJobID(t *testing.T) {
+	client := NewAPIClient("http://localhost:0")
+	_, err := client.TriggerJob("../etc/passwd")
+	if err == nil {
+		t.Fatal("expected validation error for invalid job ID")
+	}
+	if !strings.Contains(err.Error(), "invalid job ID") {
+		t.Errorf("expected 'invalid job ID' error, got: %v", err)
+	}
+}
+
 func TestAPIClientGetJobRunLatest_Running(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/jobs/update.full/runs/latest" {

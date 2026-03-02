@@ -328,6 +328,9 @@ func (c *APIClient) GetUpdateLogs() (*RunStatus, error) {
 
 // TriggerJob fires a job by ID via the core scheduler endpoint.
 func (c *APIClient) TriggerJob(jobID string) (*TriggerJobResult, error) {
+	if !validPluginName.MatchString(jobID) && !validJobID.MatchString(jobID) {
+		return nil, fmt.Errorf("invalid job ID: %q", jobID)
+	}
 	payload, err := json.Marshal(struct {
 		JobID string `json:"job_id"`
 	}{JobID: jobID})
