@@ -57,8 +57,10 @@ The TUI does **not**:
 The TUI is imported by the core binary and runs as the main interactive loop.
 The integration pattern:
 
-- Export `New(plugins []PluginInfo)` and `NewWithAPI(plugins []PluginInfo, apiBaseURL string)`
-  returning the concrete `Model` type (which implements `tea.Model`).
+- Export `New(plugins []PluginInfo)`, `NewWithAPI(plugins []PluginInfo, apiBaseURL string)`,
+  and `NewWithAuth(plugins []PluginInfo, apiBaseURL string, token string)` returning
+  the concrete `Model` type (which implements `tea.Model`). `NewWithAuth` creates a
+  model with Bearer token authentication for API calls.
 - Core's `main.go` converts its plugin registry to `[]tui.PluginInfo` and
   passes it to `NewWithAPI()` with the configured API base URL.
 - Core creates a `tea.Program` with this model and calls `Run()`.
@@ -74,9 +76,23 @@ plugins := []tui.PluginInfo{
   {Name: "network", Description: "Network interface configuration"},
 }
 model := tui.NewWithAPI(plugins, "http://localhost:7788")
+// Or with Bearer token authentication:
+// model := tui.NewWithAuth(plugins, "http://localhost:7788", "my-secret-token")
 p := tea.NewProgram(model)
 p.Run()
 ```
+
+### Connection Mode
+
+The `ConnectionMode` type controls the display badge shown in the footer.
+
+| Constant         | Description                                 |
+| ---------------- | ------------------------------------------- |
+| `ModeStandalone` | Display the standalone badge (default)      |
+| `ModeConnected`  | Display the connected badge                 |
+
+`Model.SetConnectionMode(mode ConnectionMode)` — Sets the display mode badge
+in the footer. Call before `Run()` to reflect the desired state.
 
 ## 5. Technology
 
@@ -240,6 +256,12 @@ Colour values are strings — ANSI 256 numbers (`"14"`) or hex (`"#ff5733"`).
 The core binary reads the user's config, resolves the theme (built-in name or
 custom YAML file path), and calls `SetTheme()` before launching the TUI.
 
-## 11. Future Extensions
+## 11. Security
+
+All untrusted text rendered in the terminal is passed through `sanitizeText()`
+which strips ANSI escape sequences and control characters to prevent terminal
+injection. Multi-line bodies use `sanitizeBody()` for similar protection.
+
+## 12. Future Extensions
 
 - Log viewer within the TUI.
