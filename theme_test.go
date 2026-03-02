@@ -488,3 +488,39 @@ glyphs:
 		t.Errorf("ConnBadgeText: got %q, want empty", th.ConnBadgeText)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// ThemeFromYAML — separator_width at maximum boundary (500)
+// ---------------------------------------------------------------------------
+
+func TestThemeFromYAML_MaxSepWidth(t *testing.T) {
+	yml := `
+glyphs:
+  separator_width: 500
+`
+	th, err := ThemeFromYAML([]byte(yml))
+	if err != nil {
+		t.Fatalf("ThemeFromYAML: separator_width 500 should be accepted: %v", err)
+	}
+	if th.SepWidth != 500 {
+		t.Errorf("SepWidth: got %d, want 500", th.SepWidth)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ThemeFromYAML — separator_width above maximum returns error
+// ---------------------------------------------------------------------------
+
+func TestThemeFromYAML_OverMaxSepWidth(t *testing.T) {
+	yml := `
+glyphs:
+  separator_width: 501
+`
+	_, err := ThemeFromYAML([]byte(yml))
+	if err == nil {
+		t.Fatal("expected error for separator_width > 500, got nil")
+	}
+	if !strings.Contains(err.Error(), "separator_width") {
+		t.Errorf("error should mention separator_width: %v", err)
+	}
+}

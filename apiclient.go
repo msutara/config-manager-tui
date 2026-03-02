@@ -326,6 +326,9 @@ func (c *APIClient) GetUpdateLogs() (*RunStatus, error) {
 
 // --- Job tracking methods ---
 
+// validJobID matches dot-separated job identifiers (e.g. "update.full").
+var validJobID = regexp.MustCompile(`^[a-z0-9]+(\.[a-z0-9]+)*$`)
+
 // TriggerJob fires a job by ID via the core scheduler endpoint.
 func (c *APIClient) TriggerJob(jobID string) (*TriggerJobResult, error) {
 	if !validPluginName.MatchString(jobID) && !validJobID.MatchString(jobID) {
@@ -357,9 +360,6 @@ func (c *APIClient) GetJobRunLatest(jobID string) (*JobRun, error) {
 	}
 	return &run, nil
 }
-
-// validJobID matches dot-separated job identifiers (e.g. "update.full").
-var validJobID = regexp.MustCompile(`^[a-z0-9]+(\.[a-z0-9]+)*$`)
 
 // --- Network plugin methods ---
 

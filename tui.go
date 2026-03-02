@@ -426,7 +426,7 @@ func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.goBack()
 		return m, nil
 	case tea.KeyEnter:
-		value := m.inputBuffer
+		value := sanitizeText(m.inputBuffer)
 		key := m.inputKey
 		pluginName := m.inputPlugin
 		api := m.api
