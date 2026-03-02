@@ -107,6 +107,24 @@ type PluginSettingsUpdateResult struct {
 	Warning string         `json:"warning,omitempty"`
 }
 
+// --- Job run types (core scheduler) ---
+
+// JobRun represents a job execution record from GET /api/v1/jobs/{id}/runs/latest.
+type JobRun struct {
+	JobID     string  `json:"job_id"`
+	Status    string  `json:"status"` // "running", "completed", "failed"
+	StartedAt string  `json:"started_at"`
+	EndedAt   *string `json:"ended_at,omitempty"`
+	Error     string  `json:"error,omitempty"`
+	Duration  string  `json:"duration,omitempty"`
+}
+
+// TriggerJobResult represents the response from POST /api/v1/jobs/trigger.
+type TriggerJobResult struct {
+	Status string `json:"status"`
+	JobID  string `json:"job_id"`
+}
+
 // --- Network plugin types ---
 
 // NetworkInterface represents a network interface from /api/v1/plugins/network/interfaces.
@@ -305,6 +323,43 @@ func (c *APIClient) GetUpdateLogs() (*RunStatus, error) {
 	}
 	return &rs, nil
 }
+
+// --- Job tracking methods ---
+
+// TriggerJob fires a job by ID via the core scheduler endpoint.
+func (c *APIClient) TriggerJob(jobID string) (*TriggerJobResult, error) {
+	if !validPluginName.MatchString(jobID) && !validJobID.MatchString(jobID) {
+		return nil, fmt.Errorf("invalid job ID: %q", jobID)
+	}
+	payload, err := json.Marshal(struct {
+		JobID string `json:"job_id"`
+	}{JobID: jobID})
+	if err != nil {
+		return nil, err
+	}
+	var r TriggerJobResult
+	if err := c.postJSON("/api/v1/jobs/trigger", string(payload), &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// GetJobRunLatest fetches the most recent execution record for a job.
+// Job IDs are either dot-separated (e.g. "update.full") matching validJobID,
+// or single-word identifiers (e.g. "cleanup") matching validPluginName.
+func (c *APIClient) GetJobRunLatest(jobID string) (*JobRun, error) {
+	if !validPluginName.MatchString(jobID) && !validJobID.MatchString(jobID) {
+		return nil, fmt.Errorf("invalid job ID: %q", jobID)
+	}
+	var run JobRun
+	if err := c.getJSON("/api/v1/jobs/"+jobID+"/runs/latest", &run); err != nil {
+		return nil, err
+	}
+	return &run, nil
+}
+
+// validJobID matches dot-separated job identifiers (e.g. "update.full").
+var validJobID = regexp.MustCompile(`^[a-z0-9]+(\.[a-z0-9]+)*$`)
 
 // --- Network plugin methods ---
 
