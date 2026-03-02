@@ -266,14 +266,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pollErrors = 0 // reset on successful poll
 		switch msg.run.Status {
 		case "completed":
-			elapsed := time.Since(m.progressStart).Truncate(time.Second)
-			m.detail = fmt.Sprintf("✓ %s completed\n\nDuration: %s",
-				sanitizeText(m.progressTitle), elapsed)
+			var durationStr string
 			if msg.run.Duration != "" {
-				m.detail = fmt.Sprintf("✓ %s completed\n\nDuration: %s",
-					sanitizeText(m.progressTitle), sanitizeText(msg.run.Duration))
+				durationStr = sanitizeText(msg.run.Duration)
+			} else {
+				elapsed := time.Since(m.progressStart).Truncate(time.Second)
+				durationStr = elapsed.String()
 			}
-			m.detail += "\n\nPress any key to go back."
+			m.detail = fmt.Sprintf("✓ %s completed\n\nDuration: %s\n\nPress any key to go back.",
+				sanitizeText(m.progressTitle), durationStr)
 			m.screen = screenDetail
 			return m, nil
 		case "failed":

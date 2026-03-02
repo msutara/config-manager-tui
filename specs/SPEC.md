@@ -166,8 +166,9 @@ a standard detail response.
 6. **Failed** — screen transitions to `screenDetail` with error details.
 7. **Esc / q** — dismisses the progress screen; the job continues running
    on the server in the background.
-8. Transient poll errors (network blips) are silently ignored — the next
-   tick retries automatically.
+8. Transient poll errors (network blips) are silently retried — the next
+   tick retries automatically. After `maxPollErrors` consecutive failures
+   (currently 5), the progress screen transitions to an error detail view.
 9. Stale poll results from a previously dismissed job are discarded via
    job ID matching.
 
