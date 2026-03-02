@@ -798,7 +798,8 @@ func TestActionUpdateRunFull_ReturnsJobAcceptedMsg(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(TriggerJobResult{Status: "accepted", JobID: "update.full"})
+		// Return a canonical job ID to prove the code uses the server response.
+		json.NewEncoder(w).Encode(TriggerJobResult{Status: "accepted", JobID: "update.full.v2"})
 	}))
 	defer srv.Close()
 
@@ -811,8 +812,8 @@ func TestActionUpdateRunFull_ReturnsJobAcceptedMsg(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected jobAcceptedMsg, got %T", msg)
 	}
-	if accepted.jobID != "update.full" {
-		t.Errorf("jobID: got %q, want update.full", accepted.jobID)
+	if accepted.jobID != "update.full.v2" {
+		t.Errorf("jobID: got %q, want update.full.v2 (from server response)", accepted.jobID)
 	}
 	if accepted.title != "Full Update" {
 		t.Errorf("title: got %q, want Full Update", accepted.title)
@@ -827,7 +828,7 @@ func TestActionUpdateRunSecurity_ReturnsJobAcceptedMsg(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(TriggerJobResult{Status: "accepted", JobID: "update.security"})
+		json.NewEncoder(w).Encode(TriggerJobResult{Status: "accepted", JobID: "update.security.v2"})
 	}))
 	defer srv.Close()
 
@@ -840,8 +841,8 @@ func TestActionUpdateRunSecurity_ReturnsJobAcceptedMsg(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected jobAcceptedMsg, got %T", msg)
 	}
-	if accepted.jobID != "update.security" {
-		t.Errorf("jobID: got %q, want update.security", accepted.jobID)
+	if accepted.jobID != "update.security.v2" {
+		t.Errorf("jobID: got %q, want update.security.v2 (from server response)", accepted.jobID)
 	}
 	if accepted.title != "Security Update" {
 		t.Errorf("title: got %q, want Security Update", accepted.title)

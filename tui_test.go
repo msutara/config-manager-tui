@@ -1404,6 +1404,9 @@ func TestTickMsg_PollsOnEvenTick(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("cmd should not be nil — tick+poll batch expected")
 	}
+	if !um.pollInFlight {
+		t.Error("pollInFlight should be true after dispatching poll")
+	}
 }
 
 func TestTickMsg_IgnoredOutsideProgress(t *testing.T) {
@@ -1417,6 +1420,40 @@ func TestTickMsg_IgnoredOutsideProgress(t *testing.T) {
 	}
 	if cmd != nil {
 		t.Error("cmd should be nil — tick not applicable outside progress")
+	}
+}
+
+func TestTickMsg_SkipsPollWhenInFlight(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressJobID = "update.full"
+	m.progressTicks = 1 // next tick will be 2 (even) → would poll
+	m.pollInFlight = true
+
+	updated, cmd := m.Update(tickMsg{})
+	um := updated.(Model)
+	if um.progressTicks != 2 {
+		t.Errorf("ticks: got %d, want 2", um.progressTicks)
+	}
+	// Should only return tickCmd (no poll batch) since poll is in flight.
+	if cmd == nil {
+		t.Fatal("cmd should not be nil — tick should still continue")
+	}
+}
+
+func TestJobPollMsg_ClearsPollInFlight(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressJobID = "update.full"
+	m.pollInFlight = true
+
+	updated, _ := m.Update(jobPollMsg{
+		jobID: "update.full",
+		run:   &JobRun{Status: "running"},
+	})
+	um := updated.(Model)
+	if um.pollInFlight {
+		t.Error("pollInFlight should be cleared after receiving poll result")
 	}
 }
 
@@ -1536,6 +1573,7 @@ func TestProgressScreen_EscDismisses(t *testing.T) {
 	m.screen = screenProgress
 	m.progressJobID = "update.full"
 	m.progressTitle = "Full Update"
+	m.pollInFlight = true
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	um := updated.(Model)
@@ -1544,6 +1582,9 @@ func TestProgressScreen_EscDismisses(t *testing.T) {
 	}
 	if um.progressJobID != "" {
 		t.Error("progressJobID should be cleared after dismiss")
+	}
+	if um.pollInFlight {
+		t.Error("pollInFlight should be cleared after dismiss")
 	}
 }
 
@@ -1573,7 +1614,7 @@ func TestProgressScreen_View(t *testing.T) {
 	if !strings.Contains(view, "Elapsed:") {
 		t.Errorf("view should contain elapsed time: %q", view)
 	}
-	if !strings.Contains(view, "Esc: cancel") {
+	if !strings.Contains(view, "Esc/q: cancel") {
 		t.Errorf("view should contain dismiss hint: %q", view)
 	}
 }

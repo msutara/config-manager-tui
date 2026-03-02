@@ -382,11 +382,11 @@ func actionUpdateStatus(api *APIClient) func() tea.Cmd {
 func actionUpdateRunFull(api *APIClient) func() tea.Cmd {
 	return func() tea.Cmd {
 		return func() tea.Msg {
-			_, err := api.TriggerJob("update.full")
+			res, err := api.TriggerJob("update.full")
 			if err != nil {
 				return apiResultMsg{err: err}
 			}
-			return jobAcceptedMsg{jobID: "update.full", title: "Full Update"}
+			return jobAcceptedMsg{jobID: res.JobID, title: "Full Update"}
 		}
 	}
 }
@@ -394,11 +394,11 @@ func actionUpdateRunFull(api *APIClient) func() tea.Cmd {
 func actionUpdateRunSecurity(api *APIClient) func() tea.Cmd {
 	return func() tea.Cmd {
 		return func() tea.Msg {
-			_, err := api.TriggerJob("update.security")
+			res, err := api.TriggerJob("update.security")
 			if err != nil {
 				return apiResultMsg{err: err}
 			}
-			return jobAcceptedMsg{jobID: "update.security", title: "Security Update"}
+			return jobAcceptedMsg{jobID: res.JobID, title: "Security Update"}
 		}
 	}
 }

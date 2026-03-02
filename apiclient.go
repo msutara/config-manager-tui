@@ -342,6 +342,8 @@ func (c *APIClient) TriggerJob(jobID string) (*TriggerJobResult, error) {
 }
 
 // GetJobRunLatest fetches the most recent execution record for a job.
+// Job IDs are either dot-separated (e.g. "update.full") matching validJobID,
+// or single-word identifiers (e.g. "cleanup") matching validPluginName.
 func (c *APIClient) GetJobRunLatest(jobID string) (*JobRun, error) {
 	if !validPluginName.MatchString(jobID) && !validJobID.MatchString(jobID) {
 		return nil, fmt.Errorf("invalid job ID: %q", jobID)

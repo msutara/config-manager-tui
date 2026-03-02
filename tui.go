@@ -68,6 +68,7 @@ type Model struct {
 	progressTitle string    // display title (e.g. "Full Update")
 	progressStart time.Time // when the job was triggered
 	progressTicks int       // elapsed tick count (for spinner frame)
+	pollInFlight  bool      // true while a poll request is pending
 
 	// Status bar data (fetched once on startup).
 	hostname  string
@@ -215,6 +216,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.progressTitle = msg.title
 		m.progressStart = time.Now()
 		m.progressTicks = 0
+		m.pollInFlight = false
 		return m, tickCmd()
 
 	case tickMsg:
@@ -222,10 +224,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.progressTicks++
-		// Poll every 2 ticks (2 seconds).
-		if m.progressTicks%2 == 0 {
+		// Poll every 2 ticks (2 seconds), but skip if a poll is already in flight.
+		if m.progressTicks%2 == 0 && !m.pollInFlight {
 			api := m.api
 			jobID := m.progressJobID
+			m.pollInFlight = true
 			return m, tea.Batch(tickCmd(), func() tea.Msg {
 				run, err := api.GetJobRunLatest(jobID)
 				return jobPollMsg{jobID: jobID, run: run, err: err}
@@ -241,6 +244,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.jobID != m.progressJobID {
 			return m, nil
 		}
+		m.pollInFlight = false
 		if msg.err != nil {
 			// Transient poll errors — keep polling.
 			return m, nil
@@ -491,6 +495,7 @@ func (m *Model) goBack() {
 		m.progressJobID = ""
 		m.progressTitle = ""
 		m.progressTicks = 0
+		m.pollInFlight = false
 	}
 	m.detail = ""
 	m.statusMsg = ""
@@ -591,7 +596,7 @@ func (m Model) viewProgress() string {
 
 	b.WriteString("  " + spinner + " " + m.theme.Header.Render(m.progressTitle) + "\n\n") //nolint:errcheck // writes to strings.Builder
 	b.WriteString(fmt.Sprintf("  Elapsed: %s\n\n", elapsed))                              //nolint:errcheck // writes to strings.Builder
-	b.WriteString("  " + m.theme.Footer.Render("Esc: cancel") + "\n")                     //nolint:errcheck // writes to strings.Builder
+	b.WriteString("  " + m.theme.Footer.Render("Esc/q: cancel") + "\n")                   //nolint:errcheck // writes to strings.Builder
 	return b.String()
 }
 

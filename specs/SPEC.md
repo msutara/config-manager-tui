@@ -176,7 +176,7 @@ a standard detail response.
 
   Elapsed: 12s
 
-  Esc: cancel
+  Esc/q: cancel
 ```
 
 ## 10. Future Extensions
