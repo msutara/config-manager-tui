@@ -30,7 +30,30 @@ When editing a text value (e.g. cron schedule), an input screen appears:
 | Enter     | Save the value            |
 | Esc       | Cancel and return to menu |
 
-## 3. Main Menu
+### Confirmation Dialog
+
+Destructive actions (Full Update, Security Update, generic POST endpoints)
+show a confirmation dialog before executing. The dialog displays a title and
+an explanation of the action.
+
+| Key   | Action                        |
+| ----- | ----------------------------- |
+| y / Y | Confirm and execute the action |
+| n / N | Cancel and return to menu      |
+| Esc   | Cancel and return to menu      |
+| q     | Cancel and return to menu      |
+
+> **Note:** The Enter key is intentionally excluded from the confirmation
+> dialog to prevent accidental double-tap execution. You must press `y` to
+> confirm.
+
+## 3. Status Bar
+
+The footer displays a status bar with the node hostname and uptime (fetched
+once on startup from `GET /api/v1/node`). If the API is unreachable the
+status bar is omitted.
+
+## 4. Main Menu
 
 The main menu is built dynamically from the plugins registered in the core
 binary. It always includes:
@@ -41,7 +64,7 @@ binary. It always includes:
   These appear in the order provided by the core.
 - **Quit** — exit the TUI and stop the binary.
 
-## 4. Plugin Submenus
+## 5. Plugin Submenus
 
 Selecting a plugin from the main menu opens its submenu. Each plugin provides
 its own set of menu actions:
@@ -54,7 +77,7 @@ its own set of menu actions:
 Each submenu includes a "Back" item to return to the main menu. You can also
 press esc, q, or backspace to go back.
 
-## 5. Running
+## 6. Running
 
 The TUI is not a standalone binary. It runs as part of the Config Manager
 core binary. Run the test suite with:

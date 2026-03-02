@@ -11,6 +11,9 @@ Debian-based nodes.
 - Dynamic plugin menu discovery from the core plugin registry
 - System info display (hostname, OS, kernel, arch, uptime)
 - Plugin-specific submenus with back-navigation (esc/q/backspace)
+- Confirmation dialogs for destructive actions (updates, POST endpoints)
+- Status bar showing hostname and uptime in the footer
+- Theme system with centralised colours, glyphs, and badges (`DefaultTheme`)
 
 ## Documentation
 

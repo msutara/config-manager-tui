@@ -15,10 +15,11 @@ import (
 type screen int
 
 const (
-	screenMain   screen = iota // top-level menu
-	screenSub                  // plugin sub-menu
-	screenDetail               // read-only detail view (press any key to go back)
-	screenInput                // text input for editing a config value
+	screenMain    screen = iota // top-level menu
+	screenSub                   // plugin sub-menu
+	screenDetail                // read-only detail view (press any key to go back)
+	screenInput                 // text input for editing a config value
+	screenConfirm               // confirmation dialog (y/n)
 )
 
 // ConnectionMode indicates how the TUI is connected to the API.
@@ -39,6 +40,7 @@ type Model struct {
 	cursor    int
 	quitting  bool
 	connMode  ConnectionMode
+	theme     Theme
 
 	screen       screen
 	screenTitle  string     // title for sub-menu / detail view
@@ -53,6 +55,15 @@ type Model struct {
 	inputPrompt string // label shown above the input field
 	inputKey    string // config key being edited (e.g. "schedule")
 	inputPlugin string // plugin name for the PUT call
+
+	// Confirmation screen state (screenConfirm).
+	confirmTitle  string         // e.g. "Run Full Update?"
+	confirmMsg    string         // e.g. "This will update all packages..."
+	confirmAction func() tea.Cmd // action to execute on confirmation
+
+	// Status bar data (fetched once on startup).
+	hostname  string
+	uptimeStr string // human-readable uptime, e.g. "3d 4h"
 }
 
 // New returns an initialised TUI model with default API URL.
@@ -74,6 +85,7 @@ func NewWithAuth(plugins []PluginInfo, apiBaseURL, token string) Model {
 		plugins:  plugins,
 		screen:   screenMain,
 		connMode: ModeStandalone,
+		theme:    DefaultTheme(),
 	}
 	m.menuItems = m.buildMainMenu()
 	return m
@@ -86,7 +98,22 @@ func (m *Model) SetConnectionMode(mode ConnectionMode) {
 
 // Init implements tea.Model.
 func (m Model) Init() tea.Cmd {
-	return nil
+	if m.api == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		info, err := m.api.GetNode()
+		if err != nil {
+			return nodeInfoMsg{}
+		}
+		return nodeInfoMsg{hostname: info.Hostname, uptime: info.UptimeSeconds}
+	}
+}
+
+// nodeInfoMsg carries hostname and uptime fetched at startup.
+type nodeInfoMsg struct {
+	hostname string
+	uptime   int
 }
 
 // apiResultMsg carries the result of an async API call back to Update.
@@ -118,6 +145,11 @@ type settingsResultMsg struct {
 // Update implements tea.Model. It handles keyboard input for menu navigation.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case nodeInfoMsg:
+		m.hostname = sanitizeText(msg.hostname)
+		m.uptimeStr = formatUptime(msg.uptime)
+		return m, nil
+
 	case apiResultMsg:
 		if msg.err != nil {
 			m.detail = fmt.Sprintf("Error: %s\n\nPress any key to go back.", sanitizeText(msg.err.Error()))
@@ -178,6 +210,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleInputKey(msg)
 		}
 
+		// Confirmation dialog handles y/n.
+		if m.screen == screenConfirm {
+			return m.handleConfirmKey(msg)
+		}
+
 		// In detail view, any other key goes back.
 		if m.screen == screenDetail {
 			m.goBack()
@@ -222,6 +259,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			item := m.menuItems[m.cursor]
 			if item.Action != nil {
+				if item.NeedsConfirm {
+					m.confirmTitle = item.Title + "?"
+					m.confirmMsg = item.ConfirmMsg
+					m.confirmAction = item.Action
+					m.screen = screenConfirm
+					return m, nil
+				}
 				m.quitting = item.IsQuit
 				m.loading = true
 				m.statusMsg = "Loading…"
@@ -274,6 +318,37 @@ func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
+// handleConfirmKey processes key events in the confirmation dialog.
+func (m Model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "Y":
+		action := m.confirmAction
+		m.screen = screenSub
+		if m.parentItems == nil {
+			m.screen = screenMain
+		}
+		m.confirmTitle = ""
+		m.confirmMsg = ""
+		m.confirmAction = nil
+		if action == nil {
+			return m, nil
+		}
+		m.loading = true
+		m.statusMsg = "Loading…"
+		return m, action()
+	case "n", "N", "esc", "q":
+		m.screen = screenSub
+		if m.parentItems == nil {
+			m.screen = screenMain
+		}
+		m.confirmTitle = ""
+		m.confirmMsg = ""
+		m.confirmAction = nil
+		return m, nil
+	}
+	return m, nil
+}
+
 // goBack returns to the previous screen.
 func (m *Model) goBack() {
 	switch m.screen {
@@ -317,6 +392,8 @@ func (m Model) View() string {
 		return m.viewDetail()
 	case screenInput:
 		return m.viewInput()
+	case screenConfirm:
+		return m.viewConfirm()
 	case screenSub:
 		return m.viewSubMenu()
 	default:
@@ -326,31 +403,31 @@ func (m Model) View() string {
 
 func (m Model) viewMainMenu() string {
 	var b strings.Builder
-	b.WriteString(renderHeader())                        //nolint:errcheck // writes to strings.Builder
-	b.WriteString(renderMainMenu(m.menuItems, m.cursor)) //nolint:errcheck // writes to strings.Builder
+	b.WriteString(renderHeader(m.theme))                          //nolint:errcheck // writes to strings.Builder
+	b.WriteString(renderMainMenu(m.menuItems, m.cursor, m.theme)) //nolint:errcheck // writes to strings.Builder
 	if m.statusMsg != "" {
 		b.WriteString("\n  " + m.statusMsg + "\n") //nolint:errcheck // writes to strings.Builder
 	}
-	b.WriteString(renderFooter(m.connMode)) //nolint:errcheck // writes to strings.Builder
+	b.WriteString(renderFooter(m.connMode, m.hostname, m.uptimeStr, m.theme)) //nolint:errcheck // writes to strings.Builder
 	return b.String()
 }
 
 func (m Model) viewSubMenu() string {
 	var b strings.Builder
-	b.WriteString(renderHeader())                                         //nolint:errcheck // writes to strings.Builder
-	b.WriteString(renderPluginView(m.screenTitle, m.menuItems, m.cursor)) //nolint:errcheck // writes to strings.Builder
+	b.WriteString(renderHeader(m.theme))                                           //nolint:errcheck // writes to strings.Builder
+	b.WriteString(renderPluginView(m.screenTitle, m.menuItems, m.cursor, m.theme)) //nolint:errcheck // writes to strings.Builder
 	if m.statusMsg != "" {
 		b.WriteString("\n  " + m.statusMsg + "\n") //nolint:errcheck // writes to strings.Builder
 	}
-	b.WriteString(renderSubFooter(m.connMode)) //nolint:errcheck // writes to strings.Builder
+	b.WriteString(renderSubFooter(m.connMode, m.hostname, m.uptimeStr, m.theme)) //nolint:errcheck // writes to strings.Builder
 	return b.String()
 }
 
 func (m Model) viewDetail() string {
 	var b strings.Builder
-	b.WriteString(renderHeader()) //nolint:errcheck // writes to strings.Builder
+	b.WriteString(renderHeader(m.theme)) //nolint:errcheck // writes to strings.Builder
 	if m.screenTitle != "" {
-		b.WriteString("  " + headerStyle.Render(m.screenTitle) + "\n\n") //nolint:errcheck // writes to strings.Builder
+		b.WriteString("  " + m.theme.Header.Render(m.screenTitle) + "\n\n") //nolint:errcheck // writes to strings.Builder
 	}
 	for _, line := range strings.Split(m.detail, "\n") {
 		b.WriteString("  " + line + "\n") //nolint:errcheck // writes to strings.Builder
@@ -360,9 +437,9 @@ func (m Model) viewDetail() string {
 
 func (m Model) viewInput() string {
 	var b strings.Builder
-	b.WriteString(renderHeader()) //nolint:errcheck // writes to strings.Builder
+	b.WriteString(renderHeader(m.theme)) //nolint:errcheck // writes to strings.Builder
 	if m.screenTitle != "" {
-		b.WriteString("  " + headerStyle.Render(m.screenTitle) + "\n\n") //nolint:errcheck // writes to strings.Builder
+		b.WriteString("  " + m.theme.Header.Render(m.screenTitle) + "\n\n") //nolint:errcheck // writes to strings.Builder
 	}
 	b.WriteString("  " + m.inputPrompt + "\n\n")                  //nolint:errcheck // writes to strings.Builder
 	b.WriteString("  > " + sanitizeText(m.inputBuffer) + "█\n\n") //nolint:errcheck // writes to strings.Builder
@@ -370,6 +447,19 @@ func (m Model) viewInput() string {
 	if m.statusMsg != "" {
 		b.WriteString("\n  " + m.statusMsg + "\n") //nolint:errcheck // writes to strings.Builder
 	}
+	return b.String()
+}
+
+func (m Model) viewConfirm() string {
+	var b strings.Builder
+	b.WriteString(renderHeader(m.theme))                                 //nolint:errcheck // writes to strings.Builder
+	b.WriteString("  " + m.theme.Header.Render(m.confirmTitle) + "\n\n") //nolint:errcheck // writes to strings.Builder
+	if m.confirmMsg != "" {
+		b.WriteString("  " + m.confirmMsg + "\n\n") //nolint:errcheck // writes to strings.Builder
+	}
+	yes := m.theme.ConfirmYes.Render("[Y] Yes")
+	no := m.theme.ConfirmNo.Render("[N] No")
+	b.WriteString("  " + yes + "    " + no + "\n") //nolint:errcheck // writes to strings.Builder
 	return b.String()
 }
 

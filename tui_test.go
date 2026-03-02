@@ -52,8 +52,8 @@ func TestNewWithAuth(t *testing.T) {
 func TestInit(t *testing.T) {
 	m := New(nil)
 	cmd := m.Init()
-	if cmd != nil {
-		t.Error("Init() should return nil")
+	if cmd == nil {
+		t.Error("Init() should return a command to fetch node info")
 	}
 }
 
@@ -935,5 +935,412 @@ func TestFormatSettingsResultNoWarning(t *testing.T) {
 	detail := formatSettingsResult("schedule", "0 4 * * *", res)
 	if strings.Contains(detail, "Warning") {
 		t.Error("should not contain warning when empty")
+	}
+}
+
+func TestConfirmDialog_YesExecutes(t *testing.T) {
+	executed := false
+	m := New(nil)
+	m.screen = screenConfirm
+	m.confirmTitle = "Run Full Update?"
+	m.confirmMsg = "This will update all packages."
+	m.confirmAction = func() tea.Cmd {
+		return func() tea.Msg {
+			executed = true
+			return apiResultMsg{detail: "done"}
+		}
+	}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	um := updated.(Model)
+	if um.screen == screenConfirm {
+		t.Error("should leave confirm screen after y")
+	}
+	if !um.loading {
+		t.Error("should be loading after confirm")
+	}
+	if cmd == nil {
+		t.Fatal("cmd should not be nil after confirm")
+	}
+	// Execute the command chain to verify it runs the action.
+	msg := cmd()
+	if !executed {
+		t.Error("confirm action should have executed")
+	}
+	if res, ok := msg.(apiResultMsg); !ok {
+		t.Errorf("msg type: got %T, want apiResultMsg", msg)
+	} else if res.detail != "done" {
+		t.Errorf("msg detail: got %q, want %q", res.detail, "done")
+	}
+}
+
+func TestConfirmDialog_NoReturns(t *testing.T) {
+	executed := false
+	m := New(nil)
+	m.screen = screenConfirm
+	m.confirmTitle = "Delete?"
+	m.confirmMsg = "Are you sure?"
+	m.confirmAction = func() tea.Cmd {
+		return func() tea.Msg {
+			executed = true
+			return apiResultMsg{detail: "should not run"}
+		}
+	}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	um := updated.(Model)
+	if um.screen != screenMain {
+		t.Errorf("screen: got %d, want screenMain", um.screen)
+	}
+	if um.loading {
+		t.Error("should not be loading after cancel")
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil after cancel")
+	}
+	if um.confirmTitle != "" {
+		t.Error("confirmTitle should be cleared")
+	}
+	if executed {
+		t.Error("action should not have executed on cancel")
+	}
+}
+
+func TestConfirmDialog_EscCancels(t *testing.T) {
+	executed := false
+	m := New(nil)
+	m.screen = screenConfirm
+	m.confirmTitle = "Delete?"
+	m.confirmAction = func() tea.Cmd {
+		return func() tea.Msg {
+			executed = true
+			return apiResultMsg{detail: "should not run"}
+		}
+	}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	um := updated.(Model)
+	if um.screen != screenMain {
+		t.Errorf("screen: got %d, want screenMain", um.screen)
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil after esc cancel")
+	}
+	if executed {
+		t.Error("action should not have executed on esc cancel")
+	}
+}
+
+func TestConfirmDialog_Render(t *testing.T) {
+	m := New(nil)
+	m.screen = screenConfirm
+	m.confirmTitle = "Run Full Update?"
+	m.confirmMsg = "This will update all packages."
+
+	view := m.View()
+	if !strings.Contains(view, "Run Full Update?") {
+		t.Error("confirm view should contain title")
+	}
+	if !strings.Contains(view, "This will update all packages.") {
+		t.Error("confirm view should contain message")
+	}
+	if !strings.Contains(view, "Yes") {
+		t.Error("confirm view should contain Yes option")
+	}
+	if !strings.Contains(view, "No") {
+		t.Error("confirm view should contain No option")
+	}
+}
+
+func TestMenuItem_NeedsConfirm_EnterShowsConfirm(t *testing.T) {
+	m := New(nil)
+	m.menuItems = []MenuItem{
+		{
+			Title:        "Dangerous Action",
+			Description:  "Does something dangerous",
+			NeedsConfirm: true,
+			ConfirmMsg:   "Are you sure?",
+			Action: func() tea.Cmd {
+				return func() tea.Msg { return apiResultMsg{detail: "done"} }
+			},
+		},
+	}
+	m.cursor = 0
+	m.screen = screenMain
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	um := updated.(Model)
+	if um.screen != screenConfirm {
+		t.Errorf("screen: got %d, want screenConfirm (%d)", um.screen, screenConfirm)
+	}
+	if cmd != nil {
+		t.Error("should not execute action yet — should show confirm first")
+	}
+	if um.confirmTitle != "Dangerous Action?" {
+		t.Errorf("confirmTitle: got %q, want %q", um.confirmTitle, "Dangerous Action?")
+	}
+}
+
+func TestNodeInfoMsg_SetsHostnameUptime(t *testing.T) {
+	m := New(nil)
+	updated, _ := m.Update(nodeInfoMsg{hostname: "pi-node", uptime: 5*86400 + 2*3600})
+	um := updated.(Model)
+	if um.hostname != "pi-node" {
+		t.Errorf("hostname: got %q, want %q", um.hostname, "pi-node")
+	}
+	if um.uptimeStr == "" {
+		t.Error("uptimeStr should not be empty")
+	}
+	if !strings.Contains(um.uptimeStr, "5d") {
+		t.Errorf("uptimeStr should contain '5d', got %q", um.uptimeStr)
+	}
+}
+
+func TestConfirmDialog_EnterDoesNotConfirm(t *testing.T) {
+	m := New(nil)
+	m.screen = screenConfirm
+	m.confirmTitle = "Delete?"
+	m.confirmAction = func() tea.Cmd {
+		return func() tea.Msg { return apiResultMsg{detail: "should not run"} }
+	}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	um := updated.(Model)
+	// Enter is NOT a confirmation key (prevents double-tap bypass).
+	if um.screen != screenConfirm {
+		t.Error("enter should NOT confirm — should stay on confirm screen")
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil — enter must not trigger action")
+	}
+}
+
+func TestConfirmDialog_QCancels(t *testing.T) {
+	executed := false
+	m := New(nil)
+	m.screen = screenConfirm
+	m.confirmTitle = "Delete?"
+	m.confirmAction = func() tea.Cmd {
+		return func() tea.Msg {
+			executed = true
+			return apiResultMsg{detail: "should not run"}
+		}
+	}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	um := updated.(Model)
+	if um.screen != screenMain {
+		t.Errorf("screen: got %d, want screenMain", um.screen)
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil after cancel")
+	}
+	if executed {
+		t.Error("action should not have executed on q cancel")
+	}
+}
+
+func TestConfirmDialog_NilAction(t *testing.T) {
+	m := New(nil)
+	m.screen = screenConfirm
+	m.confirmTitle = "Delete?"
+	m.confirmAction = nil // nil action should not panic
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	um := updated.(Model)
+	if um.screen != screenMain {
+		t.Errorf("screen: got %d, want screenMain", um.screen)
+	}
+	if cmd != nil {
+		t.Error("nil action should return nil cmd")
+	}
+	if um.loading {
+		t.Error("should not be loading when action is nil")
+	}
+	if um.confirmTitle != "" {
+		t.Error("confirmTitle should be cleared")
+	}
+}
+
+func TestNodeInfoMsg_SanitizesHostname(t *testing.T) {
+	m := New(nil)
+	updated, _ := m.Update(nodeInfoMsg{hostname: "evil\x1b[31mhost", uptime: 100})
+	um := updated.(Model)
+	if strings.Contains(um.hostname, "\x1b") {
+		t.Error("hostname should be sanitized — contains escape sequence")
+	}
+}
+
+func TestConfirmFlow_EndToEnd_Accept(t *testing.T) {
+	executed := false
+	m := New(nil)
+	m.menuItems = []MenuItem{
+		{
+			Title:        "Run Update",
+			Description:  "Run full system update",
+			NeedsConfirm: true,
+			ConfirmMsg:   "This will update all packages.",
+			Action: func() tea.Cmd {
+				return func() tea.Msg {
+					executed = true
+					return apiResultMsg{detail: "done"}
+				}
+			},
+		},
+	}
+	m.cursor = 0
+	m.screen = screenMain
+
+	// Step 1: press Enter on NeedsConfirm item
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	um := updated.(Model)
+	if um.screen != screenConfirm {
+		t.Fatalf("step 1: screen should be screenConfirm, got %d", um.screen)
+	}
+	if cmd != nil {
+		t.Fatal("step 1: cmd should be nil — action not yet executed")
+	}
+	if um.confirmTitle != "Run Update?" {
+		t.Errorf("step 1: confirmTitle: got %q", um.confirmTitle)
+	}
+
+	// Step 2: press 'y' to confirm
+	updated2, cmd2 := um.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	um2 := updated2.(Model)
+	if um2.screen != screenMain {
+		t.Errorf("step 2: screen: got %d, want screenMain", um2.screen)
+	}
+	if !um2.loading {
+		t.Error("step 2: should be loading after confirm")
+	}
+	if um2.confirmTitle != "" {
+		t.Error("step 2: confirmTitle should be cleared")
+	}
+	if um2.confirmAction != nil {
+		t.Error("step 2: confirmAction should be cleared")
+	}
+	if cmd2 == nil {
+		t.Fatal("step 2: cmd should not be nil — action should execute")
+	}
+	// Run the cmd to verify action fires.
+	msg := cmd2()
+	if !executed {
+		t.Error("step 2: action cmd should have been executed")
+	}
+	if res, ok := msg.(apiResultMsg); !ok {
+		t.Errorf("step 2: msg type: got %T, want apiResultMsg", msg)
+	} else if res.detail != "done" {
+		t.Errorf("step 2: msg detail: got %q, want %q", res.detail, "done")
+	}
+}
+
+func TestConfirmFlow_EndToEnd_Cancel(t *testing.T) {
+	m := New(nil)
+	m.menuItems = []MenuItem{
+		{
+			Title:        "Run Update",
+			Description:  "Run full system update",
+			NeedsConfirm: true,
+			ConfirmMsg:   "This will update all packages.",
+			Action: func() tea.Cmd {
+				return func() tea.Msg {
+					return apiResultMsg{detail: "should not run"}
+				}
+			},
+		},
+	}
+	m.cursor = 0
+	m.screen = screenMain
+
+	// Step 1: press Enter on NeedsConfirm item
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	um := updated.(Model)
+	if um.screen != screenConfirm {
+		t.Fatalf("step 1: screen should be screenConfirm, got %d", um.screen)
+	}
+
+	// Step 2: press 'n' to cancel
+	updated2, cmd2 := um.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	um2 := updated2.(Model)
+	if um2.screen != screenMain {
+		t.Errorf("step 2: screen: got %d, want screenMain", um2.screen)
+	}
+	if um2.loading {
+		t.Error("step 2: should not be loading after cancel")
+	}
+	if cmd2 != nil {
+		t.Error("step 2: cmd should be nil — action should not execute")
+	}
+	if um2.confirmAction != nil {
+		t.Error("step 2: confirmAction should be cleared")
+	}
+	if um2.confirmTitle != "" {
+		t.Error("step 2: confirmTitle should be cleared")
+	}
+}
+
+func TestConfirmFlow_Submenu_Accept(t *testing.T) {
+	executed := false
+	m := New(nil)
+	// Simulate being in a plugin submenu: parentItems is set.
+	m.parentItems = []MenuItem{{Title: "Back"}}
+	m.screen = screenConfirm
+	m.confirmTitle = "Run Update?"
+	m.confirmMsg = "This will update all packages."
+	m.confirmAction = func() tea.Cmd {
+		return func() tea.Msg {
+			executed = true
+			return apiResultMsg{detail: "done"}
+		}
+	}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	um := updated.(Model)
+	if um.screen != screenSub {
+		t.Errorf("should return to screenSub, got %d", um.screen)
+	}
+	if !um.loading {
+		t.Error("should be loading after confirm")
+	}
+	if um.confirmTitle != "" {
+		t.Error("confirmTitle should be cleared")
+	}
+	if um.confirmAction != nil {
+		t.Error("confirmAction should be cleared")
+	}
+	if cmd == nil {
+		t.Fatal("cmd should not be nil — action should execute")
+	}
+	msg := cmd()
+	if !executed {
+		t.Error("confirmation action command should have executed")
+	}
+	if res, ok := msg.(apiResultMsg); !ok {
+		t.Errorf("cmd() should return apiResultMsg, got %T", msg)
+	} else if res.detail != "done" {
+		t.Errorf("apiResultMsg.detail = %q, want %q", res.detail, "done")
+	}
+}
+
+func TestConfirmFlow_Submenu_Cancel(t *testing.T) {
+	m := New(nil)
+	m.parentItems = []MenuItem{{Title: "Back"}}
+	m.screen = screenConfirm
+	m.confirmTitle = "Delete?"
+	m.confirmAction = func() tea.Cmd { return nil }
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	um := updated.(Model)
+	if um.screen != screenSub {
+		t.Errorf("should return to screenSub, got %d", um.screen)
+	}
+	if um.loading {
+		t.Error("should not be loading after cancel")
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil after cancel")
+	}
+	if um.confirmAction != nil {
+		t.Error("confirmAction should be cleared")
 	}
 }

@@ -15,9 +15,21 @@ The TUI is a separate Go module imported by the core binary at build time.
   `New()` or `NewWithAPI()`.
 - **User interaction** — arrow keys for navigation, Enter to select, q to
   quit. Plugin-specific submenus for triggering actions.
+- **Confirmation dialogs** — destructive actions (system updates, POST
+  endpoints) require explicit `y`/`Y` confirmation before execution. The
+  Enter key is excluded from the confirm dialog to prevent accidental
+  double-tap bypass.
 - **Action triggering** — invoke plugin operations when the user selects a
   menu action.
 - **Result display** — show operation results and status in the TUI.
+- **Status bar** — the footer displays the node hostname and uptime,
+  fetched once at startup via `GET /api/v1/node`. Gracefully omitted when
+  the API is unreachable.
+- **Theme system** — primary colours, glyphs, and badge text are defined in a
+  `Theme` struct. `DefaultTheme()` provides the built-in look. Render
+  functions generally accept `Theme` as a parameter (no global style variables
+  for core elements, with minor inline styles permitted for simple separators
+  or spacing).
 - **Config editing** — edit plugin settings via the core settings API
   (`PUT /api/v1/plugins/{name}/settings`). Supports text input (schedule),
   toggles (auto-security), and cycling enum values (security source).
@@ -127,18 +139,18 @@ esc/q/backspace.
 
 ## 9. Screens
 
-The TUI has four screen types:
+The TUI has five screen types:
 
-| Screen       | Purpose                                           |
-| ------------ | ------------------------------------------------- |
-| `screenMain` | Top-level menu (System Info, plugins, Quit)        |
-| `screenSub`  | Plugin sub-menu (actions, settings, Back)           |
-| `screenDetail` | Read-only result display (press any key to go back) |
-| `screenInput` | Text input for editing a config value              |
+| Screen          | Purpose                                              |
+| --------------- | ---------------------------------------------------- |
+| `screenMain`    | Top-level menu (System Info, plugins, Quit)          |
+| `screenSub`     | Plugin sub-menu (actions, settings, Back)            |
+| `screenDetail`  | Read-only result display (press any key to go back)  |
+| `screenInput`   | Text input for editing a config value                |
+| `screenConfirm` | Y/N confirmation dialog for destructive actions      |
 
 ## 10. Future Extensions
 
-- Confirmation dialogs for destructive actions.
-- Progress indicators for long-running operations.
+- Progress indicators for long-running operations (Phase 4).
+- YAML theme config with built-in themes (Phase 5).
 - Log viewer within the TUI.
-- Theme/color customization via config.

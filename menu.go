@@ -18,18 +18,30 @@ import (
 // populates this from its plugin registry — the TUI has no direct dependency
 // on the core plugin package.
 type PluginInfo struct {
-	Name        string
+	// Name is the plugin registry identifier (e.g. "update", "network").
+	Name string
+	// Description is the user-facing summary shown in menus.
 	Description string
+	// RoutePrefix is the base API path (e.g. "/api/v1/plugins/update").
 	RoutePrefix string
-	Endpoints   []PluginEndpoint
+	// Endpoints lists the HTTP endpoints registered by the plugin.
+	Endpoints []PluginEndpoint
 }
 
 // MenuItem represents a single entry in a TUI menu.
 type MenuItem struct {
-	Title       string
+	// Title is the display name shown in the menu list.
+	Title string
+	// Description is a short help line shown below the title.
 	Description string
-	Action      func() tea.Cmd
-	IsQuit      bool // when true, selecting this item exits the TUI
+	// Action returns a tea.Cmd that performs the menu item's work.
+	Action func() tea.Cmd
+	// IsQuit exits the TUI when this item is selected.
+	IsQuit bool
+	// NeedsConfirm shows a confirmation dialog before executing the action.
+	NeedsConfirm bool
+	// ConfirmMsg is the explanatory text shown in the confirmation dialog.
+	ConfirmMsg string
 }
 
 // buildMainMenu returns the top-level menu items with live actions.
@@ -205,9 +217,10 @@ func actionGenericPlugin(api *APIClient, p PluginInfo) func() tea.Cmd {
 						continue
 					}
 					items = append(items, MenuItem{
-						Title:       desc,
-						Description: fmt.Sprintf("POST %s", safePath),
-						Action:      actionGenericPost(api, apiPath, desc),
+						Title:        desc,
+						Description:  fmt.Sprintf("POST %s", safePath),
+						Action:       actionGenericPost(api, apiPath, desc),
+						NeedsConfirm: true, ConfirmMsg: fmt.Sprintf("This will execute the '%s' action.", desc),
 					})
 				}
 			}
@@ -260,7 +273,10 @@ func actionUpdateMenu(api *APIClient) func() tea.Cmd {
 		return func() tea.Msg {
 			items := []MenuItem{
 				{Title: "Check Status", Description: "View update status", Action: actionUpdateStatus(api)},
-				{Title: "Full Update", Description: "Run full system update", Action: actionUpdateRunFull(api)},
+				{
+					Title: "Full Update", Description: "Run full system update", Action: actionUpdateRunFull(api),
+					NeedsConfirm: true, ConfirmMsg: "This will update all packages on the system.",
+				},
 			}
 
 			// Fetch config for both the security-available check and the
@@ -277,7 +293,8 @@ func actionUpdateMenu(api *APIClient) func() tea.Cmd {
 			if showSecurity {
 				items = append(items, MenuItem{
 					Title: "Security Update", Description: "Apply security patches only",
-					Action: actionUpdateRunSecurity(api),
+					Action:       actionUpdateRunSecurity(api),
+					NeedsConfirm: true, ConfirmMsg: "This will install security patches.",
 				})
 			}
 
