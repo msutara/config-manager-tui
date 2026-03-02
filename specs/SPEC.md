@@ -169,8 +169,11 @@ a standard detail response.
 8. Transient poll errors (network blips) are silently retried — the next
    tick retries automatically. After `maxPollErrors` consecutive failures
    (currently 5), the progress screen transitions to an error detail view.
-9. Stale poll results from a previously dismissed job are discarded via
-   job ID matching.
+9. Stale poll results from a previously dismissed job are discarded using
+   both job ID and a per-progress-screen session counter (`progressSession`),
+   so that responses from an earlier session are ignored even if the same
+   job ID is re-triggered. Tick messages also carry the session counter to
+   prevent duplicate tick loops when sessions overlap.
 
 ```text
   ⠹ Full Update

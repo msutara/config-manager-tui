@@ -1371,6 +1371,9 @@ func TestJobAcceptedMsg_TransitionsToProgress(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("cmd should not be nil — tick should start")
 	}
+	if um.progressSession != 1 {
+		t.Errorf("progressSession: got %d, want 1 (incremented from 0)", um.progressSession)
+	}
 }
 
 func TestTickMsg_AdvancesSpinner(t *testing.T) {
@@ -1750,5 +1753,40 @@ func TestGoBack_ClearsProgressStart(t *testing.T) {
 	}
 	if m.pollErrors != 0 {
 		t.Error("pollErrors should be 0 after goBack")
+	}
+}
+
+func TestTickMsg_StaleSessionDiscarded(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressJobID = "update.full"
+	m.progressSession = 3
+
+	// Tick from an old session should be discarded — no spinner advance, no cmd.
+	updated, cmd := m.Update(tickMsg{session: 1})
+	um := updated.(Model)
+	if um.progressTicks != 0 {
+		t.Errorf("ticks should not advance for stale session tick, got %d", um.progressTicks)
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil for stale session tick")
+	}
+}
+
+func TestTickMsg_MatchingNonZeroSessionAccepted(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressJobID = "update.full"
+	m.progressSession = 5
+	m.progressTicks = 0
+
+	// Tick with matching session should advance spinner and schedule next tick.
+	updated, cmd := m.Update(tickMsg{session: 5})
+	um := updated.(Model)
+	if um.progressTicks != 1 {
+		t.Errorf("ticks: got %d, want 1", um.progressTicks)
+	}
+	if cmd == nil {
+		t.Fatal("cmd should not be nil — next tick expected for matching session")
 	}
 }

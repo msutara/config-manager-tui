@@ -174,14 +174,18 @@ type jobPollMsg struct {
 }
 
 // tickMsg drives the progress spinner and triggers polling.
-type tickMsg time.Time
+// It carries the session counter so ticks from a previous progress session
+// are discarded when a new session starts.
+type tickMsg struct {
+	session int
+}
 
 // spinnerFrames are braille characters cycled for the progress spinner.
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-func tickCmd() tea.Cmd {
+func tickCmd(session int) tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
-		return tickMsg(t)
+		return tickMsg{session: session}
 	})
 }
 
@@ -226,10 +230,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pollInFlight = false
 		m.pollErrors = 0
 		m.progressSession++
-		return m, tickCmd()
+		return m, tickCmd(m.progressSession)
 
 	case tickMsg:
 		if m.screen != screenProgress {
+			return m, nil
+		}
+		// Discard ticks from a previous progress session.
+		if msg.session != m.progressSession {
 			return m, nil
 		}
 		m.progressTicks++
@@ -239,12 +247,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			jobID := m.progressJobID
 			sess := m.progressSession
 			m.pollInFlight = true
-			return m, tea.Batch(tickCmd(), func() tea.Msg {
+			return m, tea.Batch(tickCmd(sess), func() tea.Msg {
 				run, err := api.GetJobRunLatest(jobID)
 				return jobPollMsg{jobID: jobID, session: sess, run: run, err: err}
 			})
 		}
-		return m, tickCmd()
+		return m, tickCmd(m.progressSession)
 
 	case jobPollMsg:
 		if m.screen != screenProgress {
