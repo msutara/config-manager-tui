@@ -51,10 +51,13 @@ colors:
 glyphs:
   cursor: "▸ "                              # Prefix for selected item
   separator: "─"                            # Horizontal rule character
-  separator_width: 40                       # Rule width in characters
+  separator_width: 40                       # Rule width in characters (0–500, error if out of range)
   connected_badge: "● connected"            # Label in connected mode
   standalone_badge: "● standalone"          # Label in standalone mode
 ```
+
+`separator_width` must be between 0 and 500 (inclusive). Values outside this
+range cause a parse error.
 
 ### Style Properties
 
