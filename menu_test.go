@@ -505,6 +505,61 @@ func TestUpdateMenuIncludesSettingsItems(t *testing.T) {
 	}
 }
 
+func TestUpdateMenuHidesSecuritySettingsWhenUnavailable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/plugins/update/config":
+			json.NewEncoder(w).Encode(map[string]any{
+				"schedule":           "0 3 * * *",
+				"auto_security":      true,
+				"security_source":    "detected",
+				"security_available": false,
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	action := actionUpdateMenu(api)
+	msg := action()()
+	sub, ok := msg.(subMenuMsg)
+	if !ok {
+		t.Fatalf("expected subMenuMsg, got %T", msg)
+	}
+
+	titles := make([]string, len(sub.items))
+	for i, item := range sub.items {
+		titles[i] = item.Title
+	}
+
+	// Security-specific items should be absent.
+	hidden := []string{"Security Update", "Toggle Auto-Security", "Change Security Source"}
+	for _, h := range hidden {
+		for _, title := range titles {
+			if title == h {
+				t.Errorf("menu should NOT contain %q when security unavailable, got titles: %v", h, titles)
+			}
+		}
+	}
+
+	// Non-security items should still be present.
+	mustExist := []string{"Check Status", "Full Update", "View Settings", "Edit Schedule", "Back"}
+	for _, want := range mustExist {
+		found := false
+		for _, title := range titles {
+			if title == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("menu should contain %q, got titles: %v", want, titles)
+		}
+	}
+}
+
 func TestUpdateMenuShowsCurrentValues(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{

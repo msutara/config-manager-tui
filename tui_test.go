@@ -886,6 +886,130 @@ func TestSettingsResultMsgSanitizesError(t *testing.T) {
 	}
 }
 
+func TestSettingsResultMsg_SetsNeedsMenuRefresh(t *testing.T) {
+	m := New(nil)
+	msg := settingsResultMsg{detail: "Updated auto_security to ON"}
+	updated, _ := m.Update(msg)
+	m2 := updated.(Model)
+	if !m2.needsMenuRefresh {
+		t.Error("needsMenuRefresh should be true after successful settings change")
+	}
+}
+
+func TestSettingsResultMsg_ErrorDoesNotSetRefresh(t *testing.T) {
+	m := New(nil)
+	msg := settingsResultMsg{err: fmt.Errorf("fail")}
+	updated, _ := m.Update(msg)
+	m2 := updated.(Model)
+	if m2.needsMenuRefresh {
+		t.Error("needsMenuRefresh should be false after settings error")
+	}
+}
+
+func TestMenuRefreshMsg_UpdatesItemsInPlace(t *testing.T) {
+	m := New(nil)
+	m.screen = screenSub
+	m.parentItems = []MenuItem{{Title: "Main"}}
+	m.menuItems = []MenuItem{{Title: "Old1"}, {Title: "Old2"}}
+	m.cursor = 1
+
+	newItems := []MenuItem{{Title: "New1"}, {Title: "New2"}, {Title: "New3"}}
+	updated, _ := m.Update(menuRefreshMsg{items: newItems})
+	m2 := updated.(Model)
+
+	if len(m2.menuItems) != 3 {
+		t.Fatalf("menuItems length = %d, want 3", len(m2.menuItems))
+	}
+	if m2.menuItems[0].Title != "New1" {
+		t.Errorf("first item = %q, want New1", m2.menuItems[0].Title)
+	}
+	// parentItems should be unchanged (not overwritten).
+	if len(m2.parentItems) != 1 || m2.parentItems[0].Title != "Main" {
+		t.Error("parentItems should remain unchanged after refresh")
+	}
+	// cursor should stay at 1 (within bounds).
+	if m2.cursor != 1 {
+		t.Errorf("cursor = %d, want 1", m2.cursor)
+	}
+}
+
+func TestMenuRefreshMsg_ClampsCursor(t *testing.T) {
+	m := New(nil)
+	m.screen = screenSub
+	m.menuItems = []MenuItem{{Title: "A"}, {Title: "B"}, {Title: "C"}}
+	m.cursor = 2
+
+	// Refresh with fewer items.
+	updated, _ := m.Update(menuRefreshMsg{items: []MenuItem{{Title: "X"}}})
+	m2 := updated.(Model)
+	if m2.cursor != 0 {
+		t.Errorf("cursor = %d, want 0 (clamped)", m2.cursor)
+	}
+}
+
+func TestRefreshSkippedWhenGoBackReturnsToMain(t *testing.T) {
+	m := New(nil)
+	// Detail screen without parentItems → goBack returns to screenMain.
+	m.screen = screenDetail
+	m.needsMenuRefresh = true
+	m.parentItems = nil
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	m2 := updated.(Model)
+	if m2.screen != screenMain {
+		t.Errorf("screen = %v, want screenMain", m2.screen)
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil — no refresh when returning to main")
+	}
+	if m2.needsMenuRefresh {
+		t.Error("needsMenuRefresh should be cleared even when refresh is skipped")
+	}
+}
+
+func TestRefreshTriggeredWhenDismissingSettingsDetail(t *testing.T) {
+	m := New(nil)
+	m.screen = screenDetail
+	m.needsMenuRefresh = true
+	m.parentItems = []MenuItem{{Title: "Parent"}}
+	m.menuItems = []MenuItem{{Title: "Old"}}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	m2 := updated.(Model)
+
+	if m2.screen == screenMain {
+		t.Errorf("screen = %v, want screenSub", m2.screen)
+	}
+	if m2.needsMenuRefresh {
+		t.Error("needsMenuRefresh should be cleared after scheduling refresh")
+	}
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd to perform menu refresh")
+	}
+	if !m2.loading {
+		t.Error("loading should be true while menu refresh is in progress")
+	}
+	if m2.statusMsg == "" {
+		t.Error("statusMsg should be set while menu refresh is in progress")
+	}
+
+	// Execute the refresh command and apply the resulting menuRefreshMsg.
+	msg := cmd()
+	refresh, ok := msg.(menuRefreshMsg)
+	if !ok {
+		t.Fatalf("expected menuRefreshMsg, got %T", msg)
+	}
+
+	updated3, _ := m2.Update(refresh)
+	m3 := updated3.(Model)
+	if m3.loading {
+		t.Error("loading should be false after menu refresh is applied")
+	}
+	if len(m3.menuItems) == 0 {
+		t.Error("menuItems should be populated after menu refresh")
+	}
+}
+
 func TestAPIResultMsgSanitizesError(t *testing.T) {
 	m := New(nil)
 	msg := apiResultMsg{

@@ -329,17 +329,22 @@ func actionUpdateMenu(api *APIClient) func() tea.Cmd {
 					Description: fmt.Sprintf("Current: %s", sanitizeText(scheduleDisplay)),
 					Action:      actionEditSchedule(api),
 				},
-				MenuItem{
-					Title:       "Toggle Auto-Security",
-					Description: fmt.Sprintf("Currently: %s", sanitizeText(autoSecDisplay)),
-					Action:      actionToggleAutoSecurity(api),
-				},
-				MenuItem{
-					Title:       "Change Security Source",
-					Description: fmt.Sprintf("Currently: %s", sanitizeText(secSourceDisplay)),
-					Action:      actionCycleSecuritySource(api),
-				},
 			)
+
+			if showSecurity {
+				items = append(items,
+					MenuItem{
+						Title:       "Toggle Auto-Security",
+						Description: fmt.Sprintf("Currently: %s", sanitizeText(autoSecDisplay)),
+						Action:      actionToggleAutoSecurity(api),
+					},
+					MenuItem{
+						Title:       "Change Security Source",
+						Description: fmt.Sprintf("Currently: %s", sanitizeText(secSourceDisplay)),
+						Action:      actionCycleSecuritySource(api),
+					},
+				)
+			}
 
 			items = append(items, MenuItem{Title: "Back", Description: "Return to main menu", Action: func() tea.Cmd {
 				return func() tea.Msg { return subMenuMsg{} }
