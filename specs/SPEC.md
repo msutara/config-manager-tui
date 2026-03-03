@@ -134,7 +134,7 @@ Config Manager
 │   ├── View Settings
 │   ├── Edit Schedule          (opens text input screen)
 │   ├── Toggle Auto-Security   (immediate toggle ON/OFF)
-│   ├── Change Security Source  (cycles available ↔ always)
+│   ├── Change Security Source  (cycles detected ↔ always)
 │   └── Back
 ├── Network Manager
 │   ├── List Interfaces
