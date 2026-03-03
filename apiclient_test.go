@@ -903,3 +903,53 @@ func TestAPIClientUpdatePluginSetting_InvalidName(t *testing.T) {
 		t.Errorf("error should mention invalid plugin name: %v", err)
 	}
 }
+
+func TestFriendlyAPIError_WithMessage(t *testing.T) {
+	body := []byte(`{"error":{"code":"job_not_found","message":"Job 'update.security' not found","details":{}}}`)
+	err := friendlyAPIError("POST", "/api/v1/jobs/trigger", 404, body)
+	want := "Job 'update.security' not found"
+	if err.Error() != want {
+		t.Errorf("got %q, want %q", err.Error(), want)
+	}
+}
+
+func TestFriendlyAPIError_WithoutMessage(t *testing.T) {
+	body := []byte(`not json`)
+	err := friendlyAPIError("GET", "/api/v1/node", 500, body)
+	if !strings.Contains(err.Error(), "GET /api/v1/node") {
+		t.Errorf("fallback should include method and path: %v", err)
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("fallback should include status code: %v", err)
+	}
+}
+
+func TestFriendlyAPIError_EmptyMessage(t *testing.T) {
+	body := []byte(`{"error":{"code":"unknown","message":""}}`)
+	err := friendlyAPIError("POST", "/test", 400, body)
+	// Empty message should fall back to raw body format
+	if !strings.Contains(err.Error(), "POST /test") {
+		t.Errorf("empty message should fall back to raw format: %v", err)
+	}
+}
+
+func TestTriggerJob_FriendlyError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintln(w, `{"error":{"code":"job_not_found","message":"Job 'update.security' not found"}}`)
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.TriggerJob("update.security")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "Job 'update.security' not found") {
+		t.Errorf("error should contain friendly message, got: %v", err)
+	}
+	// Should NOT contain raw JSON
+	if strings.Contains(err.Error(), `"code"`) {
+		t.Errorf("error should not contain raw JSON: %v", err)
+	}
+}
