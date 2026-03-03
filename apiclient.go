@@ -168,6 +168,26 @@ func truncateBody(b []byte) string {
 	return string(runes)
 }
 
+// apiErrorEnvelope matches the standard error JSON from the core API:
+//
+//	{"error":{"code":"...","message":"..."}}
+type apiErrorEnvelope struct {
+	Error struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// friendlyAPIError extracts a human-readable message from a raw JSON error
+// body.  If the body is a well-formed error envelope with a message, only the
+// message is returned.  Otherwise it falls back to the full body (truncated).
+func friendlyAPIError(method, path string, status int, body []byte) error {
+	var env apiErrorEnvelope
+	if json.Unmarshal(body, &env) == nil && env.Error.Message != "" {
+		return fmt.Errorf("%s", env.Error.Message)
+	}
+	return fmt.Errorf("%s %s: status %d: %s", method, path, status, truncateBody(body))
+}
+
 // GetPlugins fetches the plugin registry.
 func (c *APIClient) GetPlugins() ([]PluginRegistryEntry, error) {
 	var plugins []PluginRegistryEntry
@@ -200,7 +220,7 @@ func (c *APIClient) GetRaw(apiPath string) (string, error) {
 		return "", fmt.Errorf("read body %s: %w", apiPath, readErr)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GET %s: status %d: %s", apiPath, resp.StatusCode, truncateBody(body))
+		return "", friendlyAPIError("GET", apiPath, resp.StatusCode, body)
 	}
 	return string(body), nil
 }
@@ -228,7 +248,7 @@ func (c *APIClient) PostRaw(apiPath string) (string, error) {
 		return "", fmt.Errorf("read body %s: %w", apiPath, readErr)
 	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
-		return "", fmt.Errorf("POST %s: status %d: %s", apiPath, resp.StatusCode, truncateBody(body))
+		return "", friendlyAPIError("POST", apiPath, resp.StatusCode, body)
 	}
 	return string(body), nil
 }
@@ -406,7 +426,7 @@ func (c *APIClient) getJSON(path string, out interface{}) error {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort error body
-		return fmt.Errorf("GET %s: status %d: %s", path, resp.StatusCode, truncateBody(body))
+		return friendlyAPIError("GET", path, resp.StatusCode, body)
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
@@ -432,7 +452,7 @@ func (c *APIClient) postJSON(path, body string, out interface{}) error {
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 		b, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort error body
-		return fmt.Errorf("POST %s: status %d: %s", path, resp.StatusCode, truncateBody(b))
+		return friendlyAPIError("POST", path, resp.StatusCode, b)
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
@@ -458,7 +478,7 @@ func (c *APIClient) putJSON(path, body string, out interface{}) error {
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort error body
-		return fmt.Errorf("PUT %s: status %d: %s", path, resp.StatusCode, truncateBody(b))
+		return friendlyAPIError("PUT", path, resp.StatusCode, b)
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {

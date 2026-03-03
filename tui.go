@@ -468,6 +468,23 @@ func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		key := m.inputKey
 		pluginName := m.inputPlugin
 		api := m.api
+
+		// Client-side validation for schedule fields.
+		if key == "schedule" {
+			trimmed := strings.TrimSpace(value)
+			lower := strings.ToLower(trimmed)
+			isShortcut := lower == "@yearly" || lower == "@annually" ||
+				lower == "@monthly" || lower == "@weekly" || lower == "@daily" ||
+				lower == "@midnight" || lower == "@hourly"
+			if !isShortcut {
+				fields := strings.Fields(value)
+				if len(fields) != 5 {
+					m.statusMsg = fmt.Sprintf("Invalid: expected 5 fields, got %d (minute hour dom month dow)", len(fields))
+					return m, nil
+				}
+			}
+		}
+
 		m.loading = true
 		m.statusMsg = "Saving…"
 		return m, func() tea.Msg {

@@ -799,6 +799,54 @@ func TestInputScreenEnterReturnsCmd(t *testing.T) {
 	}
 }
 
+func TestInputScreenEnterRejectsBadCron(t *testing.T) {
+	m := New(nil)
+	m.screen = screenInput
+	m.inputBuffer = "0 2 * * * MON"
+	m.inputKey = "schedule"
+	m.inputPlugin = "update"
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updated.(Model)
+	if cmd != nil {
+		t.Error("bad cron should not produce a cmd (no API call)")
+	}
+	if !strings.Contains(m2.statusMsg, "expected 5 fields") {
+		t.Errorf("statusMsg should mention 5 fields, got: %q", m2.statusMsg)
+	}
+	if m2.loading {
+		t.Error("should not enter loading state for invalid cron")
+	}
+}
+
+func TestInputScreenEnterAllowsNonScheduleKeys(t *testing.T) {
+	m := New(nil)
+	m.screen = screenInput
+	m.inputBuffer = "any value here"
+	m.inputKey = "security_source"
+	m.inputPlugin = "update"
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("non-schedule keys should not be cron-validated")
+	}
+}
+
+func TestInputScreenEnterAcceptsCronShortcuts(t *testing.T) {
+	for _, shortcut := range []string{"@daily", "@weekly", "@monthly", "@hourly", "@yearly", "@annually", "@midnight"} {
+		m := New(nil)
+		m.screen = screenInput
+		m.inputBuffer = shortcut
+		m.inputKey = "schedule"
+		m.inputPlugin = "update"
+
+		_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		if cmd == nil {
+			t.Errorf("@-shortcut %q should be accepted, not rejected", shortcut)
+		}
+	}
+}
+
 func TestInputScreenCtrlCQuits(t *testing.T) {
 	m := New(nil)
 	m.screen = screenInput

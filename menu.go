@@ -480,7 +480,7 @@ func actionEditSchedule(api *APIClient) func() tea.Cmd {
 				return settingsResultMsg{err: fmt.Errorf("schedule setting is missing or invalid")}
 			}
 			return editInputMsg{
-				prompt:     "Enter new cron schedule (e.g. 0 3 * * *):",
+				prompt:     "Cron schedule (5 fields: min hr dom mon dow, e.g. 0 3 * * *):",
 				key:        "schedule",
 				plugin:     "update",
 				currentVal: v,
