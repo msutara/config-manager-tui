@@ -280,13 +280,13 @@ func actionUpdateMenu(api *APIClient) func() tea.Cmd {
 			}
 
 			// Fetch config for both the security-available check and the
-			// settings items.  Transient errors default to showing everything.
+			// settings items.  Default to hiding security when unknown (fail-closed).
 			var cfg *UpdateConfig
-			showSecurity := true
+			showSecurity := false
 			if c, err := api.GetUpdateConfig(); err == nil {
 				cfg = c
-				if c.SecurityAvailable != nil {
-					showSecurity = *c.SecurityAvailable
+				if c.SecurityAvailable != nil && *c.SecurityAvailable {
+					showSecurity = true
 				}
 			}
 
@@ -440,10 +440,22 @@ func actionUpdateViewSettings(api *APIClient) func() tea.Cmd {
 			if err != nil {
 				return apiResultMsg{err: err}
 			}
+
+			// Hide security-related keys unless explicitly available (fail-closed).
+			hideSec := map[string]bool{"auto_security": true, "security_source": true}
+			if cfg, err := api.GetUpdateConfig(); err == nil {
+				if cfg.SecurityAvailable != nil && *cfg.SecurityAvailable {
+					hideSec = map[string]bool{}
+				}
+			}
+
 			var b strings.Builder
 			b.WriteString("Update Plugin Settings\n\n") //nolint:errcheck // writes to strings.Builder
 			keys := make([]string, 0, len(ps.Config))
 			for k := range ps.Config {
+				if hideSec[k] {
+					continue
+				}
 				keys = append(keys, k)
 			}
 			sort.Strings(keys)

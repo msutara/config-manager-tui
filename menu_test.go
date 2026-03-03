@@ -560,6 +560,184 @@ func TestUpdateMenuHidesSecuritySettingsWhenUnavailable(t *testing.T) {
 	}
 }
 
+func TestUpdateMenuHidesSecuritySettingsWhenNil(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/plugins/update/config":
+			// SecurityAvailable omitted → nil pointer (fail-closed).
+			json.NewEncoder(w).Encode(map[string]any{
+				"schedule": "0 3 * * *",
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	action := actionUpdateMenu(api)
+	msg := action()()
+	sub, ok := msg.(subMenuMsg)
+	if !ok {
+		t.Fatalf("expected subMenuMsg, got %T", msg)
+	}
+
+	titles := make([]string, len(sub.items))
+	for i, item := range sub.items {
+		titles[i] = item.Title
+	}
+
+	hidden := []string{"Security Update", "Toggle Auto-Security", "Change Security Source"}
+	for _, h := range hidden {
+		for _, title := range titles {
+			if title == h {
+				t.Errorf("menu should NOT contain %q when SecurityAvailable is nil, got titles: %v", h, titles)
+			}
+		}
+	}
+}
+
+func TestUpdateMenuHidesSecuritySettingsOnAPIError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	action := actionUpdateMenu(api)
+	msg := action()()
+	sub, ok := msg.(subMenuMsg)
+	if !ok {
+		t.Fatalf("expected subMenuMsg, got %T", msg)
+	}
+
+	titles := make([]string, len(sub.items))
+	for i, item := range sub.items {
+		titles[i] = item.Title
+	}
+
+	hidden := []string{"Security Update", "Toggle Auto-Security", "Change Security Source"}
+	for _, h := range hidden {
+		for _, title := range titles {
+			if title == h {
+				t.Errorf("menu should NOT contain %q on API error (fail-closed), got titles: %v", h, titles)
+			}
+		}
+	}
+}
+
+func TestViewSettingsHidesSecurityWhenUnavailable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/plugins/update/settings":
+			json.NewEncoder(w).Encode(map[string]any{
+				"config": map[string]any{
+					"schedule":        "0 3 * * *",
+					"auto_security":   true,
+					"security_source": "detected",
+				},
+			})
+		case "/api/v1/plugins/update/config":
+			json.NewEncoder(w).Encode(map[string]any{
+				"schedule":           "0 3 * * *",
+				"auto_security":      true,
+				"security_source":    "detected",
+				"security_available": false,
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	action := actionUpdateViewSettings(api)
+	msg := action()()
+	res, ok := msg.(apiResultMsg)
+	if !ok {
+		t.Fatalf("expected apiResultMsg, got %T", msg)
+	}
+	if strings.Contains(res.detail, "auto_security") {
+		t.Error("view should hide auto_security when security unavailable")
+	}
+	if strings.Contains(res.detail, "security_source") {
+		t.Error("view should hide security_source when security unavailable")
+	}
+	if !strings.Contains(res.detail, "schedule") {
+		t.Error("view should still show schedule")
+	}
+}
+
+func TestViewSettingsShowsSecurityWhenAvailable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/plugins/update/settings":
+			json.NewEncoder(w).Encode(map[string]any{
+				"config": map[string]any{
+					"schedule":        "0 3 * * *",
+					"auto_security":   true,
+					"security_source": "detected",
+				},
+			})
+		case "/api/v1/plugins/update/config":
+			json.NewEncoder(w).Encode(map[string]any{
+				"security_available": true,
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	action := actionUpdateViewSettings(api)
+	msg := action()()
+	res := msg.(apiResultMsg)
+	if !strings.Contains(res.detail, "auto_security") {
+		t.Error("view should show auto_security when security available")
+	}
+	if !strings.Contains(res.detail, "security_source") {
+		t.Error("view should show security_source when security available")
+	}
+}
+
+func TestViewSettingsHidesSecurityWhenNil(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/plugins/update/settings":
+			json.NewEncoder(w).Encode(map[string]any{
+				"config": map[string]any{
+					"schedule":        "0 3 * * *",
+					"auto_security":   false,
+					"security_source": "detected",
+				},
+			})
+		case "/api/v1/plugins/update/config":
+			// SecurityAvailable omitted (nil pointer).
+			json.NewEncoder(w).Encode(map[string]any{
+				"schedule": "0 3 * * *",
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	action := actionUpdateViewSettings(api)
+	msg := action()()
+	res := msg.(apiResultMsg)
+	if strings.Contains(res.detail, "auto_security") {
+		t.Error("view should hide auto_security when SecurityAvailable is nil (fail-closed)")
+	}
+	if strings.Contains(res.detail, "security_source") {
+		t.Error("view should hide security_source when SecurityAvailable is nil (fail-closed)")
+	}
+	if !strings.Contains(res.detail, "schedule") {
+		t.Error("view should still show schedule")
+	}
+}
+
 func TestUpdateMenuShowsCurrentValues(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{
