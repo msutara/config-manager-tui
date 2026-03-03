@@ -48,13 +48,14 @@ type Model struct {
 	connMode  ConnectionMode
 	theme     Theme
 
-	screen       screen
-	screenTitle  string     // title for sub-menu / detail view
-	detail       string     // rendered content for detail screen
-	parentItems  []MenuItem // saved main menu for returning from sub-menu
-	parentCursor int        // saved cursor position for returning from sub-menu
-	statusMsg    string     // transient status message
-	loading      bool       // true while an async command is in flight
+	screen           screen
+	screenTitle      string     // title for sub-menu / detail view
+	detail           string     // rendered content for detail screen
+	parentItems      []MenuItem // saved main menu for returning from sub-menu
+	parentCursor     int        // saved cursor position for returning from sub-menu
+	statusMsg        string     // transient status message
+	loading          bool       // true while an async command is in flight
+	needsMenuRefresh bool       // detail screen should rebuild the sub-menu on dismiss
 
 	// Input screen state (screenInput).
 	inputBuffer string // current text being edited
@@ -157,6 +158,12 @@ type settingsResultMsg struct {
 	err    error
 }
 
+// menuRefreshMsg replaces the current sub-menu items in-place (e.g. after a
+// settings change) without pushing a new navigation level.
+type menuRefreshMsg struct {
+	items []MenuItem
+}
+
 // jobAcceptedMsg tells Update to switch to the progress screen and start polling.
 type jobAcceptedMsg struct {
 	jobID string
@@ -213,6 +220,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.detail = fmt.Sprintf("Error: %s\n\nPress any key to go back.", sanitizeText(msg.err.Error()))
 		} else {
 			m.detail = msg.detail + "\n\nPress any key to go back."
+			m.needsMenuRefresh = true
 		}
 		m.screen = screenDetail
 		m.statusMsg = ""
@@ -312,6 +320,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusMsg = ""
 		return m, nil
 
+	case menuRefreshMsg:
+		m.loading = false
+		m.statusMsg = ""
+		m.menuItems = msg.items
+		// Keep cursor in bounds after items may have changed count.
+		if m.cursor >= len(msg.items) {
+			m.cursor = max(0, len(msg.items)-1)
+		}
+		return m, nil
+
 	case subMenuMsg:
 		m.loading = false
 		if msg.title == "" {
@@ -356,7 +374,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// In detail view, any other key goes back.
 		if m.screen == screenDetail {
+			refresh := m.needsMenuRefresh
+			m.needsMenuRefresh = false
 			m.goBack()
+			// After a successful settings change, rebuild the sub-menu
+			// so descriptions (e.g. "Currently: ON") reflect the new state.
+			if refresh && m.screen == screenSub && m.api != nil {
+				m.loading = true
+				m.statusMsg = "Loading…"
+				api := m.api
+				stale := m.menuItems // fallback: keep current items
+				return m, func() tea.Msg {
+					// Re-run the update menu builder and extract the items.
+					inner := actionUpdateMenu(api)()
+					raw := inner()
+					if sm, ok := raw.(subMenuMsg); ok {
+						return menuRefreshMsg{items: sm.items}
+					}
+					// Fallback: return stale items so loading is still cleared.
+					return menuRefreshMsg{items: stale}
+				}
+			}
 			return m, nil
 		}
 
