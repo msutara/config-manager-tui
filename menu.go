@@ -509,10 +509,10 @@ func actionCycleSecuritySource(api *APIClient) func() tea.Cmd {
 			}
 			var newVal string
 			switch v {
-			case "available":
+			case "detected":
 				newVal = "always"
 			case "always":
-				newVal = "available"
+				newVal = "detected"
 			default:
 				return settingsResultMsg{err: fmt.Errorf("unexpected security_source value: %q", v)}
 			}

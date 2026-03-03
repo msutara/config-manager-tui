@@ -600,7 +600,7 @@ func TestAPIClientGetPluginSettings(t *testing.T) {
 			"config": map[string]any{
 				"schedule":        "0 3 * * *",
 				"auto_security":   true,
-				"security_source": "available",
+				"security_source": "detected",
 			},
 		})
 	}))
@@ -656,7 +656,7 @@ func TestAPIClientUpdatePluginSetting(t *testing.T) {
 			"config": map[string]any{
 				"schedule":        "0 4 * * *",
 				"auto_security":   true,
-				"security_source": "available",
+				"security_source": "detected",
 			},
 		})
 	}))

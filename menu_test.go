@@ -461,7 +461,7 @@ func TestUpdateMenuIncludesSettingsItems(t *testing.T) {
 			json.NewEncoder(w).Encode(map[string]any{
 				"schedule":           "0 3 * * *",
 				"auto_security":      true,
-				"security_source":    "available",
+				"security_source":    "detected",
 				"security_available": true,
 			})
 		default:
@@ -611,7 +611,7 @@ func TestActionCycleSecuritySource(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			json.NewEncoder(w).Encode(map[string]any{
-				"config": map[string]any{"security_source": "available"},
+				"config": map[string]any{"security_source": "detected"},
 			})
 			return
 		}
@@ -624,7 +624,7 @@ func TestActionCycleSecuritySource(t *testing.T) {
 			t.Errorf("key = %q, want 'security_source'", body.Key)
 		}
 		if body.Value != "always" {
-			t.Errorf("value = %v, want 'always' (cycled from 'available')", body.Value)
+			t.Errorf("value = %v, want 'always' (cycled from 'detected')", body.Value)
 		}
 		json.NewEncoder(w).Encode(map[string]any{
 			"config": map[string]any{"security_source": "always"},
@@ -657,11 +657,11 @@ func TestActionCycleSecuritySourceReverse(t *testing.T) {
 			Value any `json:"value"`
 		}
 		json.NewDecoder(r.Body).Decode(&body)
-		if body.Value != "available" {
-			t.Errorf("value = %v, want 'available' (cycled from 'always')", body.Value)
+		if body.Value != "detected" {
+			t.Errorf("value = %v, want 'detected' (cycled from 'always')", body.Value)
 		}
 		json.NewEncoder(w).Encode(map[string]any{
-			"config": map[string]any{"security_source": "available"},
+			"config": map[string]any{"security_source": "detected"},
 		})
 	}))
 	defer srv.Close()
