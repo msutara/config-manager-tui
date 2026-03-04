@@ -953,3 +953,99 @@ func TestTriggerJob_FriendlyError(t *testing.T) {
 		t.Errorf("error should not contain raw JSON: %v", err)
 	}
 }
+
+// ---------- validateAPIPath tests ----------
+
+func TestValidateAPIPath(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		wantErr bool
+	}{
+		{"valid simple", "/api/v1/test", false},
+		{"valid deep", "/api/v1/plugins/firewall/rules", false},
+		{"root", "/", false},
+		{"empty", "", true},
+		{"no leading slash", "api/v1/test", true},
+		{"traversal above root", "/../../etc/passwd", true},
+		{"deep traversal", "/api/v1/../../etc/shadow", true},
+		{"encoded traversal", "/%2e%2e/secret", true},
+		{"mid-path encoded traversal", "/foo/%2e%2e/bar", true},
+		{"encoded slash harmless", "/foo%2fbar", false},
+		{"invalid percent encoding", "/%zz/bad", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateAPIPath(tt.path)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateAPIPath(%q) error = %v, wantErr %v", tt.path, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// ---------- GetRaw/PostRaw path validation tests ----------
+
+func TestGetRawRejectsInvalidPaths(t *testing.T) {
+	client := NewAPIClient("http://localhost:1")
+	for _, p := range []string{"", "no-slash", "/../../etc/passwd"} {
+		_, err := client.GetRaw(p)
+		if err == nil {
+			t.Errorf("GetRaw(%q) should return error", p)
+		}
+	}
+}
+
+func TestPostRawRejectsInvalidPaths(t *testing.T) {
+	client := NewAPIClient("http://localhost:1")
+	for _, p := range []string{"", "no-slash", "/../../etc/passwd"} {
+		_, err := client.PostRaw(p)
+		if err == nil {
+			t.Errorf("PostRaw(%q) should return error", p)
+		}
+	}
+}
+
+// ---------- Error body sanitization tests ----------
+
+func TestGetRawErrorSanitizesBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error\x1b[31m injected\x00tail")) //nolint:errcheck // test helper
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.GetRaw("/test")
+	if err == nil {
+		t.Fatal("expected error for 500")
+	}
+	errStr := err.Error()
+	if strings.Contains(errStr, "\x1b") {
+		t.Error("error should not contain ANSI escape")
+	}
+	if strings.Contains(errStr, "\x00") {
+		t.Error("error should not contain null byte")
+	}
+}
+
+func TestPostRawErrorSanitizesBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error\x1b[31m injected\x00tail")) //nolint:errcheck // test helper
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.PostRaw("/test")
+	if err == nil {
+		t.Fatal("expected error for 500")
+	}
+	errStr := err.Error()
+	if strings.Contains(errStr, "\x1b") {
+		t.Error("error should not contain ANSI escape")
+	}
+	if strings.Contains(errStr, "\x00") {
+		t.Error("error should not contain null byte")
+	}
+}
