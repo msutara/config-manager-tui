@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -148,6 +149,33 @@ type NetworkStatus struct {
 	InternetReachable bool   `json:"internet_reachable"`
 }
 
+// --- Path validation ---
+
+// validateAPIPath checks that an API path is safe before use in HTTP requests.
+// It rejects empty paths, paths without a leading slash, and paths that contain
+// directory traversal sequences (including percent-encoded variants like %2e%2e).
+func validateAPIPath(p string) error {
+	if p == "" {
+		return fmt.Errorf("empty API path")
+	}
+	if !strings.HasPrefix(p, "/") {
+		return fmt.Errorf("API path must start with /")
+	}
+	// Decode percent-encoding before traversal check so that sequences like
+	// /%2e%2e/secret are caught.
+	decoded, err := url.PathUnescape(p)
+	if err != nil {
+		return fmt.Errorf("invalid API path encoding: %w", err)
+	}
+	// Reject traversal attempts by checking for ".." path segments.
+	for _, seg := range strings.Split(decoded, "/") {
+		if seg == ".." {
+			return fmt.Errorf("API path contains traversal")
+		}
+	}
+	return nil
+}
+
 // --- Generic plugin methods ---
 
 // truncateBody sanitizes and truncates a response body for inclusion in error
@@ -199,8 +227,8 @@ func (c *APIClient) GetPlugins() ([]PluginRegistryEntry, error) {
 
 // GetRaw fetches an arbitrary endpoint and returns its raw body string.
 func (c *APIClient) GetRaw(apiPath string) (string, error) {
-	if !strings.HasPrefix(apiPath, "/") {
-		apiPath = "/" + apiPath
+	if err := validateAPIPath(apiPath); err != nil {
+		return "", err
 	}
 	req, err := http.NewRequest(http.MethodGet, c.baseURL+apiPath, nil)
 	if err != nil {
@@ -227,8 +255,8 @@ func (c *APIClient) GetRaw(apiPath string) (string, error) {
 
 // PostRaw sends a POST to an arbitrary endpoint and returns the status message.
 func (c *APIClient) PostRaw(apiPath string) (string, error) {
-	if !strings.HasPrefix(apiPath, "/") {
-		apiPath = "/" + apiPath
+	if err := validateAPIPath(apiPath); err != nil {
+		return "", err
 	}
 	req, err := http.NewRequest(http.MethodPost, c.baseURL+apiPath, nil)
 	if err != nil {

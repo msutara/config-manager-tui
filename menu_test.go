@@ -91,6 +91,12 @@ func TestCleanPluginPath(t *testing.T) {
 		{"dot-in-segment", "/api/v1/plugins/firewall", "/..status", "/api/v1/plugins/firewall/..status"},
 		{"null byte", "/api/v1/plugins/firewall", "/x%00y", ""},
 		{"newline", "/api/v1/plugins/firewall", "/x%0ay", ""},
+		// routePrefix validation (defense-in-depth).
+		{"prefix traversal literal", "/api/v1/../secret", "/rules", ""},
+		{"prefix traversal encoded", "/api/v1/%2e%2e/secret", "/rules", ""},
+		{"prefix control char", "/api/v1/plugins/\x00bad", "/rules", ""},
+		{"prefix C1 control", "/api/v1/plugins/\u009Bbad", "/rules", ""},
+		{"prefix invalid escape", "/api/%zz/plugins/fw", "/rules", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -128,8 +128,10 @@ func titleCase(s string) string {
 	return strings.Join(out, " ")
 }
 
-// sanitizeText strips ASCII control characters (including ANSI escape sequences)
-// from untrusted text before rendering in the terminal.
+// sanitizeText strips control characters from untrusted text before rendering
+// in the terminal. unicode.IsControl covers both the ASCII C0 range
+// (U+0000–U+001F, U+007F) and the Unicode C1 range (U+0080–U+009F), so ANSI
+// escape sequences and C1 control codes (e.g. CSI at U+009B) are all removed.
 func sanitizeText(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
@@ -143,6 +145,8 @@ func sanitizeText(s string) string {
 
 // sanitizeBody strips control characters but preserves newlines and tabs
 // for readable display of multi-line API response bodies.
+// unicode.IsControl covers both C0 (U+0000–U+001F, U+007F) and C1
+// (U+0080–U+009F) ranges; newlines and tabs are explicitly allowed through.
 func sanitizeBody(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
@@ -156,12 +160,26 @@ func sanitizeBody(s string) string {
 
 // cleanPluginPath builds a safe API path from a route prefix and endpoint path,
 // rejecting path traversal (including percent-encoded sequences) and verifying
-// the result stays under the expected prefix. routePrefix is trusted — it is
-// set by the plugin registry (server-controlled, not user input).
+// the result stays under the expected prefix. routePrefix originates from the
+// plugin registry (server-controlled), but is validated as defense-in-depth.
 func cleanPluginPath(routePrefix, epPath string) string {
 	prefix := strings.TrimRight(routePrefix, "/")
 	if prefix == "" {
 		return ""
+	}
+
+	// Validate routePrefix (defense-in-depth against compromised registry).
+	decodedPrefix, err := url.PathUnescape(prefix)
+	if err != nil {
+		return ""
+	}
+	if strings.Contains(decodedPrefix, "..") {
+		return ""
+	}
+	for _, r := range decodedPrefix {
+		if unicode.IsControl(r) {
+			return ""
+		}
 	}
 
 	// Decode percent-encoding before validation to catch %2e%2e etc.
