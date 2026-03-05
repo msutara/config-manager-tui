@@ -1087,3 +1087,24 @@ func TestActionUpdateRunSecurity_ReturnsJobAcceptedMsg(t *testing.T) {
 		t.Errorf("title: got %q, want Security Update", accepted.title)
 	}
 }
+
+func TestDisplayPath(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"/status", "/status"},
+		{"", "/"},
+		{"/foo/../bar", "/bar"},
+		{"//reload", "/reload"},
+		{"/", "/"},
+		{"/a/b/c", "/a/b/c"},
+		{"reload", "/reload"},
+	}
+	for _, tc := range tests {
+		got := displayPath(tc.input)
+		if got != tc.want {
+			t.Errorf("displayPath(%q): got %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}

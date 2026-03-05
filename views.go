@@ -30,6 +30,14 @@ func renderSubFooter(mode ConnectionMode, hostname, uptime string, th Theme) str
 	return "\n  " + hints + "  " + status + badge + "\n"
 }
 
+// renderInputFooter returns a footer for the input screen with save/cancel hints and connection badge.
+func renderInputFooter(mode ConnectionMode, hostname, uptime string, th Theme) string {
+	badge := modeBadge(mode, th)
+	hints := th.Footer.Render("enter: save • esc: cancel")
+	status := renderStatusBar(hostname, uptime, th)
+	return "\n  " + hints + "  " + status + badge + "\n"
+}
+
 // renderStatusBar returns a formatted hostname and uptime string for the footer.
 func renderStatusBar(hostname, uptime string, th Theme) string {
 	if hostname == "" {

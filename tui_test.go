@@ -718,7 +718,7 @@ func TestInputScreenRendersPromptAndBuffer(t *testing.T) {
 	if !strings.Contains(view, "0 4 * * *") {
 		t.Error("view should contain input buffer")
 	}
-	if !strings.Contains(view, "Enter: save") {
+	if !strings.Contains(view, "enter: save") {
 		t.Error("view should contain key hints")
 	}
 }
@@ -1960,5 +1960,45 @@ func TestTickMsg_MatchingNonZeroSessionAccepted(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Fatal("cmd should not be nil — next tick expected for matching session")
+	}
+}
+
+func TestSanitizeValue_BoolTrue(t *testing.T) {
+	got := sanitizeValue(true)
+	if got != "ON" {
+		t.Errorf("sanitizeValue(true): got %q, want %q", got, "ON")
+	}
+}
+
+func TestSanitizeValue_BoolFalse(t *testing.T) {
+	got := sanitizeValue(false)
+	if got != "OFF" {
+		t.Errorf("sanitizeValue(false): got %q, want %q", got, "OFF")
+	}
+}
+
+func TestSanitizeValue_String(t *testing.T) {
+	got := sanitizeValue("hello")
+	if got != "hello" {
+		t.Errorf("sanitizeValue(string): got %q, want %q", got, "hello")
+	}
+}
+
+func TestSanitizeValue_Number(t *testing.T) {
+	got := sanitizeValue(42)
+	if got != "42" {
+		t.Errorf("sanitizeValue(42): got %q, want %q", got, "42")
+	}
+}
+
+func TestProgressScreen_EscKeyType(t *testing.T) {
+	m := New(nil)
+	m.screen = screenProgress
+	m.progressJobID = "update.full"
+	msg := tea.KeyMsg{Type: tea.KeyEsc}
+	updated, _ := m.Update(msg)
+	um := updated.(Model)
+	if um.screen == screenProgress {
+		t.Error("Esc (KeyType) should dismiss progress screen")
 	}
 }

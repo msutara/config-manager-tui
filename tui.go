@@ -365,7 +365,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Progress screen: Esc dismisses back to menu.
 		if m.screen == screenProgress {
-			if msg.String() == "esc" || msg.String() == "q" {
+			if msg.Type == tea.KeyEsc || msg.String() == "q" {
 				m.goBack()
 				return m, nil
 			}
@@ -651,10 +651,10 @@ func (m Model) viewInput() string {
 	}
 	b.WriteString("  " + m.inputPrompt + "\n\n")                  //nolint:errcheck // writes to strings.Builder
 	b.WriteString("  > " + sanitizeText(m.inputBuffer) + "█\n\n") //nolint:errcheck // writes to strings.Builder
-	b.WriteString("  Enter: save  Esc: cancel\n")                 //nolint:errcheck // writes to strings.Builder
 	if m.statusMsg != "" {
-		b.WriteString("\n  " + m.statusMsg + "\n") //nolint:errcheck // writes to strings.Builder
+		b.WriteString("  " + m.statusMsg + "\n") //nolint:errcheck // writes to strings.Builder
 	}
+	b.WriteString(renderInputFooter(m.connMode, m.hostname, m.uptimeStr, m.theme)) //nolint:errcheck // writes to strings.Builder
 	return b.String()
 }
 
@@ -688,9 +688,13 @@ func (m Model) viewProgress() string {
 // sanitizeValue converts an arbitrary config value to a sanitized string.
 // Composite types (slices, maps) are formatted then sanitized to prevent
 // terminal escape injection from nested string elements.
+// Booleans are displayed as ON/OFF for consistency with menu descriptions.
 func sanitizeValue(v any) string {
 	if s, ok := v.(string); ok {
 		return sanitizeText(s)
+	}
+	if b, ok := v.(bool); ok {
+		return boolOnOff(b)
 	}
 	return sanitizeText(fmt.Sprintf("%v", v))
 }
