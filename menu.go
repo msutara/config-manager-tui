@@ -504,11 +504,11 @@ func actionEditSchedule(api *APIClient) func() tea.Cmd {
 			// Fetch current schedule to avoid stale prefill.
 			ps, err := api.GetPluginSettings("update")
 			if err != nil {
-				return settingsResultMsg{err: err}
+				return apiResultMsg{err: err}
 			}
 			v, ok := ps.Config["schedule"].(string)
 			if !ok {
-				return settingsResultMsg{err: fmt.Errorf("schedule setting is missing or invalid")}
+				return apiResultMsg{err: fmt.Errorf("schedule setting is missing or invalid")}
 			}
 			return editInputMsg{
 				prompt:     "Cron schedule (5 fields: min hr dom mon dow, e.g. 0 3 * * *):",
@@ -526,19 +526,19 @@ func actionToggleAutoSecurity(api *APIClient) func() tea.Cmd {
 			// Fetch current value to avoid stale-closure toggling.
 			ps, err := api.GetPluginSettings("update")
 			if err != nil {
-				return settingsResultMsg{err: err}
+				return apiResultMsg{err: err}
 			}
 			v, ok := ps.Config["auto_security"].(bool)
 			if !ok {
-				return settingsResultMsg{err: fmt.Errorf("auto_security setting is missing or invalid")}
+				return apiResultMsg{err: fmt.Errorf("auto_security setting is missing or invalid")}
 			}
 			newVal := !v
 			res, err := api.UpdatePluginSetting("update", "auto_security", newVal)
 			if err != nil {
-				return settingsResultMsg{err: err}
+				return apiResultMsg{err: err}
 			}
 			detail := formatSettingsResult("auto_security", sanitizeValue(newVal), res)
-			return settingsResultMsg{detail: detail}
+			return apiResultMsg{refreshMenu: true, detail: detail}
 		}
 	}
 }
@@ -549,11 +549,11 @@ func actionCycleSecuritySource(api *APIClient) func() tea.Cmd {
 			// Fetch current value to avoid stale-closure cycling.
 			ps, err := api.GetPluginSettings("update")
 			if err != nil {
-				return settingsResultMsg{err: err}
+				return apiResultMsg{err: err}
 			}
 			v, ok := ps.Config["security_source"].(string)
 			if !ok {
-				return settingsResultMsg{err: fmt.Errorf("security_source setting is missing or invalid")}
+				return apiResultMsg{err: fmt.Errorf("security_source setting is missing or invalid")}
 			}
 			var newVal string
 			switch v {
@@ -562,14 +562,14 @@ func actionCycleSecuritySource(api *APIClient) func() tea.Cmd {
 			case "always":
 				newVal = "detected"
 			default:
-				return settingsResultMsg{err: fmt.Errorf("unexpected security_source value: %q", v)}
+				return apiResultMsg{err: fmt.Errorf("unexpected security_source value: %q", v)}
 			}
 			res, err := api.UpdatePluginSetting("update", "security_source", newVal)
 			if err != nil {
-				return settingsResultMsg{err: err}
+				return apiResultMsg{err: err}
 			}
 			detail := formatSettingsResult("security_source", newVal, res)
-			return settingsResultMsg{detail: detail}
+			return apiResultMsg{refreshMenu: true, detail: detail}
 		}
 	}
 }

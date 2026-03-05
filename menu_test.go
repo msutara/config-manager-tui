@@ -837,9 +837,9 @@ func TestActionToggleAutoSecurity(t *testing.T) {
 	action := actionToggleAutoSecurity(api)
 	cmd := action()
 	msg := cmd()
-	res, ok := msg.(settingsResultMsg)
+	res, ok := msg.(apiResultMsg)
 	if !ok {
-		t.Fatalf("expected settingsResultMsg, got %T", msg)
+		t.Fatalf("expected apiResultMsg, got %T", msg)
 	}
 	if res.err != nil {
 		t.Fatalf("unexpected error: %v", res.err)
@@ -875,9 +875,9 @@ func TestActionCycleSecuritySource(t *testing.T) {
 	action := actionCycleSecuritySource(api)
 	cmd := action()
 	msg := cmd()
-	res, ok := msg.(settingsResultMsg)
+	res, ok := msg.(apiResultMsg)
 	if !ok {
-		t.Fatalf("expected settingsResultMsg, got %T", msg)
+		t.Fatalf("expected apiResultMsg, got %T", msg)
 	}
 	if res.err != nil {
 		t.Fatalf("unexpected error: %v", res.err)
@@ -908,7 +908,7 @@ func TestActionCycleSecuritySourceReverse(t *testing.T) {
 	api := NewAPIClient(srv.URL)
 	action := actionCycleSecuritySource(api)
 	msg := action()()
-	res := msg.(settingsResultMsg)
+	res := msg.(apiResultMsg)
 	if res.err != nil {
 		t.Fatalf("unexpected error: %v", res.err)
 	}
@@ -924,7 +924,7 @@ func TestActionCycleSecuritySource_MissingKey(t *testing.T) {
 
 	api := NewAPIClient(srv.URL)
 	msg := actionCycleSecuritySource(api)()()
-	res := msg.(settingsResultMsg)
+	res := msg.(apiResultMsg)
 	if res.err == nil {
 		t.Fatal("expected error for missing security_source")
 	}
@@ -941,9 +941,9 @@ func TestActionEditSchedule_FetchError(t *testing.T) {
 
 	api := NewAPIClient(srv.URL)
 	msg := actionEditSchedule(api)()()
-	res, ok := msg.(settingsResultMsg)
+	res, ok := msg.(apiResultMsg)
 	if !ok {
-		t.Fatalf("expected settingsResultMsg, got %T", msg)
+		t.Fatalf("expected apiResultMsg, got %T", msg)
 	}
 	if res.err == nil {
 		t.Fatal("expected error when settings fetch fails")
@@ -960,7 +960,7 @@ func TestActionToggleAutoSecurity_MissingKey(t *testing.T) {
 
 	api := NewAPIClient(srv.URL)
 	msg := actionToggleAutoSecurity(api)()()
-	res := msg.(settingsResultMsg)
+	res := msg.(apiResultMsg)
 	if res.err == nil {
 		t.Fatal("expected error for missing auto_security")
 	}
@@ -979,7 +979,7 @@ func TestActionToggleAutoSecurity_WrongType(t *testing.T) {
 
 	api := NewAPIClient(srv.URL)
 	msg := actionToggleAutoSecurity(api)()()
-	res := msg.(settingsResultMsg)
+	res := msg.(apiResultMsg)
 	if res.err == nil {
 		t.Fatal("expected error for non-bool auto_security")
 	}
@@ -998,7 +998,7 @@ func TestActionCycleSecuritySource_WrongType(t *testing.T) {
 
 	api := NewAPIClient(srv.URL)
 	msg := actionCycleSecuritySource(api)()()
-	res := msg.(settingsResultMsg)
+	res := msg.(apiResultMsg)
 	if res.err == nil {
 		t.Fatal("expected error for non-string security_source")
 	}
@@ -1017,9 +1017,9 @@ func TestActionEditSchedule_MissingKey(t *testing.T) {
 
 	api := NewAPIClient(srv.URL)
 	msg := actionEditSchedule(api)()()
-	res, ok := msg.(settingsResultMsg)
+	res, ok := msg.(apiResultMsg)
 	if !ok {
-		t.Fatalf("expected settingsResultMsg, got %T", msg)
+		t.Fatalf("expected apiResultMsg, got %T", msg)
 	}
 	if res.err == nil {
 		t.Fatal("expected error for missing schedule")
