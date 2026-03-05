@@ -158,6 +158,19 @@ func sanitizeBody(s string) string {
 	return b.String()
 }
 
+// displayPath normalises a sanitised endpoint path for human-readable menu
+// descriptions. Empty or root-equivalent paths are shown as "/".
+func displayPath(s string) string {
+	p := path.Clean(s)
+	if p == "." || p == "" {
+		return "/"
+	}
+	if p[0] != '/' {
+		p = "/" + p
+	}
+	return p
+}
+
 // cleanPluginPath builds a safe API path from a route prefix and endpoint path,
 // rejecting path traversal (including percent-encoded sequences) and verifying
 // the result stays under the expected prefix. routePrefix originates from the
@@ -226,7 +239,7 @@ func actionGenericPlugin(api *APIClient, p PluginInfo) func() tea.Cmd {
 					}
 					items = append(items, MenuItem{
 						Title:       desc,
-						Description: fmt.Sprintf("GET %s", safePath),
+						Description: fmt.Sprintf("GET %s", displayPath(safePath)),
 						Action:      actionGenericGet(api, apiPath),
 					})
 				case "POST":
@@ -236,7 +249,7 @@ func actionGenericPlugin(api *APIClient, p PluginInfo) func() tea.Cmd {
 					}
 					items = append(items, MenuItem{
 						Title:        desc,
-						Description:  fmt.Sprintf("POST %s", safePath),
+						Description:  fmt.Sprintf("POST %s", displayPath(safePath)),
 						Action:       actionGenericPost(api, apiPath, desc),
 						NeedsConfirm: true, ConfirmMsg: fmt.Sprintf("This will execute the '%s' action.", desc),
 					})

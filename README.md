@@ -12,7 +12,10 @@ Debian-based nodes.
 - System info display (hostname, OS, kernel, arch, uptime)
 - Plugin-specific submenus with back-navigation (esc/q/backspace)
 - Confirmation dialogs for destructive actions (updates, POST endpoints)
-- Status bar showing hostname and uptime in the footer
+- Status bar showing hostname and uptime in the footer (main, sub-menu, and
+  input screens)
+- Boolean config values displayed as ON / OFF for readability
+- Plugin endpoint paths normalised for clean menu descriptions
 - Theme system with centralised colours, glyphs, and badges (`DefaultTheme`)
 
 ## Documentation

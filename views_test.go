@@ -207,3 +207,31 @@ func TestRenderFooter_WithStatusBar(t *testing.T) {
 		t.Error("footer should contain uptime from status bar")
 	}
 }
+
+func TestRenderInputFooter(t *testing.T) {
+	th := DefaultTheme()
+	f := renderInputFooter(ModeConnected, "myhost", "3d 4h", th)
+	if !strings.Contains(f, "enter: save") {
+		t.Error("input footer should contain save hint")
+	}
+	if !strings.Contains(f, "esc: cancel") {
+		t.Error("input footer should contain cancel hint")
+	}
+	if !strings.Contains(f, "connected") {
+		t.Error("input footer should contain connection badge")
+	}
+	if !strings.Contains(f, "myhost") {
+		t.Error("input footer should contain hostname")
+	}
+}
+
+func TestRenderInputFooter_Standalone(t *testing.T) {
+	th := DefaultTheme()
+	f := renderInputFooter(ModeStandalone, "", "", th)
+	if !strings.Contains(f, "enter: save") {
+		t.Error("input footer should contain save hint")
+	}
+	if !strings.Contains(f, "standalone") {
+		t.Error("input footer should contain standalone badge")
+	}
+}

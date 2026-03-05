@@ -51,7 +51,8 @@ an explanation of the action.
 
 The footer displays a status bar with the node hostname and uptime (fetched
 once on startup from `GET /api/v1/node`). If the API is unreachable the
-status bar is omitted.
+status bar is omitted. The status bar and connection badge appear on the main
+menu, sub-menu, and input screens.
 
 ## 4. Main Menu
 

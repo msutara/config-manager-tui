@@ -155,7 +155,14 @@ esc/q/backspace.
 - Selected menu item uses a `▸` cursor glyph and bold cyan text.
 - Unselected items use muted white text.
 - Descriptions are rendered in faint style beside each title.
-- Footer shows key hints in faint text.
+- Footer shows key hints in faint text with a connection badge and optional
+  status bar (hostname + uptime) on the main, sub-menu, and input screens.
+- The input screen footer displays `enter: save • esc: cancel` alongside the
+  connection badge and status bar for consistency with menu screens.
+- Boolean config values are displayed as **ON** / **OFF** instead of
+  `true` / `false`.
+- Plugin endpoint paths in menu descriptions are normalised via `displayPath()`
+  so empty or redundant segments (e.g. `//reload`) appear cleanly.
 
 ## 9. Screens
 
