@@ -133,9 +133,12 @@ type nodeInfoMsg struct {
 }
 
 // apiResultMsg carries the result of an async API call back to Update.
+// When refreshMenu is true and the call succeeded (err == nil), the current
+// sub-menu is rebuilt after displaying the result (used after settings mutations).
 type apiResultMsg struct {
-	detail string
-	err    error
+	detail      string
+	err         error
+	refreshMenu bool
 }
 
 // subMenuMsg tells Update to switch to a sub-menu.
@@ -150,12 +153,6 @@ type editInputMsg struct {
 	key        string // config key being edited
 	plugin     string // plugin name for the PUT call
 	currentVal string // pre-filled value
-}
-
-// settingsResultMsg carries the result of a config update.
-type settingsResultMsg struct {
-	detail string
-	err    error
 }
 
 // menuRefreshMsg replaces the current sub-menu items in-place (e.g. after a
@@ -209,18 +206,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.detail = fmt.Sprintf("Error: %s\n\nPress any key to go back.", sanitizeText(msg.err.Error()))
 		} else {
 			m.detail = msg.detail + "\n\nPress any key to go back."
-		}
-		m.screen = screenDetail
-		m.statusMsg = ""
-		m.loading = false
-		return m, nil
-
-	case settingsResultMsg:
-		if msg.err != nil {
-			m.detail = fmt.Sprintf("Error: %s\n\nPress any key to go back.", sanitizeText(msg.err.Error()))
-		} else {
-			m.detail = msg.detail + "\n\nPress any key to go back."
-			m.needsMenuRefresh = true
+			if msg.refreshMenu {
+				m.needsMenuRefresh = true
+			}
 		}
 		m.screen = screenDetail
 		m.statusMsg = ""
@@ -490,10 +478,10 @@ func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, func() tea.Msg {
 			res, err := api.UpdatePluginSetting(pluginName, key, value)
 			if err != nil {
-				return settingsResultMsg{err: err}
+				return apiResultMsg{err: err}
 			}
 			detail := formatSettingsResult(key, value, res)
-			return settingsResultMsg{detail: detail}
+			return apiResultMsg{detail: detail, refreshMenu: true}
 		}
 	case tea.KeyBackspace:
 		if len(m.inputBuffer) > 0 {

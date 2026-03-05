@@ -889,10 +889,11 @@ func TestInputScreenLoadingGuardIgnoresKeys(t *testing.T) {
 	}
 }
 
-func TestSettingsResultMsgShowsDetail(t *testing.T) {
+func TestApiResultMsg_SettingsShowsDetail(t *testing.T) {
 	m := New(nil)
-	msg := settingsResultMsg{
-		detail: "Updated schedule to 0 4 * * *",
+	msg := apiResultMsg{
+		refreshMenu: true,
+		detail:      "Updated schedule to 0 4 * * *",
 	}
 	updated, _ := m.Update(msg)
 	m2 := updated.(Model)
@@ -904,9 +905,9 @@ func TestSettingsResultMsgShowsDetail(t *testing.T) {
 	}
 }
 
-func TestSettingsResultMsgShowsError(t *testing.T) {
+func TestApiResultMsg_SettingsShowsError(t *testing.T) {
 	m := New(nil)
-	msg := settingsResultMsg{
+	msg := apiResultMsg{
 		err: fmt.Errorf("invalid cron expression"),
 	}
 	updated, _ := m.Update(msg)
@@ -919,9 +920,9 @@ func TestSettingsResultMsgShowsError(t *testing.T) {
 	}
 }
 
-func TestSettingsResultMsgSanitizesError(t *testing.T) {
+func TestApiResultMsg_SettingsSanitizesError(t *testing.T) {
 	m := New(nil)
-	msg := settingsResultMsg{
+	msg := apiResultMsg{
 		err: fmt.Errorf("bad value: \x1b[31mred\x1b[0m"),
 	}
 	updated, _ := m.Update(msg)
@@ -934,9 +935,9 @@ func TestSettingsResultMsgSanitizesError(t *testing.T) {
 	}
 }
 
-func TestSettingsResultMsg_SetsNeedsMenuRefresh(t *testing.T) {
+func TestApiResultMsg_Settings_SetsNeedsMenuRefresh(t *testing.T) {
 	m := New(nil)
-	msg := settingsResultMsg{detail: "Updated auto_security to ON"}
+	msg := apiResultMsg{refreshMenu: true, detail: "Updated auto_security to ON"}
 	updated, _ := m.Update(msg)
 	m2 := updated.(Model)
 	if !m2.needsMenuRefresh {
@@ -944,13 +945,23 @@ func TestSettingsResultMsg_SetsNeedsMenuRefresh(t *testing.T) {
 	}
 }
 
-func TestSettingsResultMsg_ErrorDoesNotSetRefresh(t *testing.T) {
+func TestApiResultMsg_Settings_ErrorDoesNotSetNeedsMenuRefresh(t *testing.T) {
 	m := New(nil)
-	msg := settingsResultMsg{err: fmt.Errorf("fail")}
+	msg := apiResultMsg{refreshMenu: true, err: fmt.Errorf("fail")}
 	updated, _ := m.Update(msg)
 	m2 := updated.(Model)
 	if m2.needsMenuRefresh {
 		t.Error("needsMenuRefresh should be false after settings error")
+	}
+}
+
+func TestApiResultMsg_NoRefreshDoesNotSetNeedsMenuRefresh(t *testing.T) {
+	m := New(nil)
+	msg := apiResultMsg{detail: "Some API result"}
+	updated, _ := m.Update(msg)
+	m2 := updated.(Model)
+	if m2.needsMenuRefresh {
+		t.Error("needsMenuRefresh should remain false when refreshMenu is not set")
 	}
 }
 
