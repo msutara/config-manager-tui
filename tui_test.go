@@ -1,7 +1,11 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -796,6 +800,50 @@ func TestInputScreenEnterReturnsCmd(t *testing.T) {
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("expected non-nil cmd from Enter on input screen")
+	}
+}
+
+func TestInputScreenEnterSanitizesValue(t *testing.T) {
+	var captured struct {
+		Key   string `json:"key"`
+		Value string `json:"value"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Errorf("unmarshal body: %v", err)
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"message":"ok","config":{"security_source":"always"}}`)
+	}))
+	defer srv.Close()
+
+	m := New(nil)
+	m.api = NewAPIClient(srv.URL)
+	m.screen = screenInput
+	m.inputBuffer = "always\x00\x07"
+	m.inputKey = "security_source"
+	m.inputPlugin = "update"
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd from Enter")
+	}
+	// Execute the command to trigger the API call.
+	cmd()
+
+	if captured.Value != "always" {
+		t.Errorf("API received unsanitized value: got %q, want %q", captured.Value, "always")
+	}
+	if strings.ContainsAny(captured.Value, "\x00\x07") {
+		t.Error("API value should not contain control characters")
 	}
 }
 

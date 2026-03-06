@@ -9,6 +9,16 @@ import (
 	"testing"
 )
 
+// closedTestServer returns the URL of an httptest.Server that has been
+// immediately closed. Use this instead of "http://localhost:1" to get a
+// guaranteed-unreachable endpoint for tests that validate client-side
+// behaviour without making real HTTP calls.
+func closedTestServer() string {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	srv.Close()
+	return srv.URL
+}
+
 // ---------- Generic helpers ----------
 
 func TestTruncateBody(t *testing.T) {
@@ -801,7 +811,7 @@ func TestAPIClientGetJobRunLatest_Completed(t *testing.T) {
 }
 
 func TestAPIClientGetJobRunLatest_InvalidJobID(t *testing.T) {
-	client := NewAPIClient("http://localhost:1")
+	client := NewAPIClient(closedTestServer())
 	_, err := client.GetJobRunLatest("../etc/passwd")
 	if err == nil {
 		t.Fatal("expected error for invalid job ID")
@@ -987,7 +997,7 @@ func TestValidateAPIPath(t *testing.T) {
 // ---------- GetRaw/PostRaw path validation tests ----------
 
 func TestGetRawRejectsInvalidPaths(t *testing.T) {
-	client := NewAPIClient("http://localhost:1")
+	client := NewAPIClient(closedTestServer())
 	for _, p := range []string{"", "no-slash", "/../../etc/passwd"} {
 		_, err := client.GetRaw(p)
 		if err == nil {
@@ -997,7 +1007,7 @@ func TestGetRawRejectsInvalidPaths(t *testing.T) {
 }
 
 func TestPostRawRejectsInvalidPaths(t *testing.T) {
-	client := NewAPIClient("http://localhost:1")
+	client := NewAPIClient(closedTestServer())
 	for _, p := range []string{"", "no-slash", "/../../etc/passwd"} {
 		_, err := client.PostRaw(p)
 		if err == nil {
