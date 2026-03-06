@@ -240,7 +240,7 @@ func TestBuildMainMenuGenericPluginNoEndpoints(t *testing.T) {
 }
 
 func TestActionGenericPlugin_SubMenuContent(t *testing.T) {
-	api := NewAPIClient("http://localhost:1") // not called during sub-menu build
+	api := NewAPIClient(closedTestServer()) // not called during sub-menu build
 	p := PluginInfo{
 		Name: "firewall", Description: "Firewall management",
 		RoutePrefix: "/api/v1/plugins/firewall",
@@ -280,7 +280,7 @@ func TestActionGenericPlugin_SubMenuContent(t *testing.T) {
 }
 
 func TestActionGenericPlugin_NoEndpoints(t *testing.T) {
-	api := NewAPIClient("http://localhost:1")
+	api := NewAPIClient(closedTestServer())
 	p := PluginInfo{Name: "empty", Description: "No endpoints"}
 
 	action := actionGenericPlugin(api, p)
@@ -402,7 +402,7 @@ func TestActionGenericPost_Error(t *testing.T) {
 }
 
 func TestActionGenericPlugin_SkipsInvalidPaths(t *testing.T) {
-	api := NewAPIClient("http://localhost:1")
+	api := NewAPIClient(closedTestServer())
 	p := PluginInfo{
 		Name: "bad", Description: "Bad paths",
 		RoutePrefix: "/api/v1/plugins/bad",
@@ -434,7 +434,7 @@ func TestActionGenericPlugin_SkipsInvalidPaths(t *testing.T) {
 }
 
 func TestActionGenericPlugin_BackAction(t *testing.T) {
-	api := NewAPIClient("http://localhost:1")
+	api := NewAPIClient(closedTestServer())
 	p := PluginInfo{Name: "test", Description: "Test"}
 
 	action := actionGenericPlugin(api, p)
