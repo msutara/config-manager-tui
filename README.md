@@ -11,7 +11,10 @@ Debian-based nodes.
 - Dynamic plugin menu discovery from the core plugin registry
 - System info display (hostname, OS, kernel, arch, uptime)
 - Plugin-specific submenus with back-navigation (esc/q/backspace)
-- Confirmation dialogs for destructive actions (updates, POST endpoints)
+- Nested submenus for interface selection (Set Static IP, Delete, Rollback)
+- Network write operations — set static IP, set DNS, delete static IP,
+  rollback interface, rollback DNS with confirmation dialogs
+- Confirmation dialogs for destructive actions (updates, network changes)
 - Status bar showing hostname and uptime in the footer (main, sub-menu, and
   input screens)
 - Boolean config values displayed as ON / OFF for readability
@@ -59,6 +62,10 @@ the Config Manager API and plugin registry:
 - **Plugin name validation** — Plugin identifiers are matched against
   `validPluginName` (`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`), rejecting any
   names that could be used to construct malicious API paths.
+- **Interface name validation** — Network interface names are matched against
+  `validIfaceName` (`^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,14}$`), preventing path
+  traversal, null bytes, and injection via interface name parameters in
+  network write operations.
 - **Route prefix validation** — Plugin route prefixes received from the
   registry are decoded and checked for traversal sequences and control
   characters as defense-in-depth against a compromised registry.

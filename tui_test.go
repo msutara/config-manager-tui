@@ -301,6 +301,57 @@ func TestSubMenuBack(t *testing.T) {
 	}
 }
 
+func TestNestedSubMenuBack(t *testing.T) {
+	m := New(nil)
+	mainCount := len(m.menuItems)
+
+	// Enter first sub-menu (Network Manager).
+	updated, _ := m.Update(subMenuMsg{
+		title: "Network Manager",
+		items: []MenuItem{{Title: "Set Static IP"}, {Title: "Back"}},
+	})
+	model := updated.(Model)
+	if model.screen != screenSub {
+		t.Fatalf("screen after first sub: got %d, want %d", model.screen, screenSub)
+	}
+
+	// Enter second-level sub-menu (interface picker).
+	updated, _ = model.Update(subMenuMsg{
+		title: "Set Static IP — Select Interface",
+		items: []MenuItem{{Title: "eth0"}, {Title: "Back"}},
+	})
+	model = updated.(Model)
+	if model.screen != screenSub {
+		t.Fatalf("screen after nested sub: got %d, want %d", model.screen, screenSub)
+	}
+	if model.screenTitle != "Set Static IP — Select Interface" {
+		t.Fatalf("title after nested sub: got %q", model.screenTitle)
+	}
+
+	// Press esc — should return to Network Manager (screenSub), not screenMain.
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = updated.(Model)
+	if model.screen != screenSub {
+		t.Errorf("screen after back from nested: got %d, want screenSub (%d)", model.screen, screenSub)
+	}
+	if model.screenTitle != "Network Manager" {
+		t.Errorf("title after back from nested: got %q, want %q", model.screenTitle, "Network Manager")
+	}
+	if len(model.menuItems) != 2 {
+		t.Errorf("items after back from nested: got %d, want 2", len(model.menuItems))
+	}
+
+	// Press esc again — should return to main menu.
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = updated.(Model)
+	if model.screen != screenMain {
+		t.Errorf("screen after second back: got %d, want screenMain (%d)", model.screen, screenMain)
+	}
+	if len(model.menuItems) != mainCount {
+		t.Errorf("items after second back: got %d, want %d", len(model.menuItems), mainCount)
+	}
+}
+
 func TestSubMenuQGoesBack(t *testing.T) {
 	m := New(nil)
 	// Enter sub-menu.
@@ -563,7 +614,7 @@ func TestLoadingClearedOnSubMenuMsg(t *testing.T) {
 func TestLoadingClearedOnGoBack(t *testing.T) {
 	m := New(nil)
 	m.screen = screenSub
-	m.parentItems = m.menuItems
+	m.menuStack = []menuState{{items: m.menuItems, cursor: 0}}
 	m.menuItems = []MenuItem{{Title: "X"}}
 
 	// goBack itself clears loading (when called directly).
@@ -577,7 +628,7 @@ func TestLoadingClearedOnGoBack(t *testing.T) {
 func TestBackBlockedWhileLoading(t *testing.T) {
 	m := New(nil)
 	m.screen = screenSub
-	m.parentItems = m.menuItems
+	m.menuStack = []menuState{{items: m.menuItems, cursor: 0}}
 	m.menuItems = []MenuItem{{Title: "X"}}
 	m.loading = true
 
@@ -600,7 +651,7 @@ func TestBackBlockedWhileLoading(t *testing.T) {
 func TestCtrlCAlwaysQuits(t *testing.T) {
 	m := New(nil)
 	m.screen = screenSub
-	m.parentItems = m.menuItems
+	m.menuStack = []menuState{{items: m.menuItems, cursor: 0}}
 	m.menuItems = []MenuItem{{Title: "X"}}
 	m.loading = true
 
@@ -766,7 +817,7 @@ func TestInputScreenBackspaceOnEmpty(t *testing.T) {
 func TestInputScreenEscGoesBack(t *testing.T) {
 	m := New(nil)
 	m.screen = screenInput
-	m.parentItems = []MenuItem{{Title: "test"}}
+	m.menuStack = []menuState{{items: []MenuItem{{Title: "test"}}, cursor: 0}}
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m2 := updated.(Model)
@@ -781,7 +832,7 @@ func TestInputScreenEscGoesBack(t *testing.T) {
 func TestInputScreenEscGoesToMainWhenNoParent(t *testing.T) {
 	m := New(nil)
 	m.screen = screenInput
-	m.parentItems = nil
+	m.menuStack = nil
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m2 := updated.(Model)
@@ -1016,7 +1067,7 @@ func TestApiResultMsg_NoRefreshDoesNotSetNeedsMenuRefresh(t *testing.T) {
 func TestMenuRefreshMsg_UpdatesItemsInPlace(t *testing.T) {
 	m := New(nil)
 	m.screen = screenSub
-	m.parentItems = []MenuItem{{Title: "Main"}}
+	m.menuStack = []menuState{{items: []MenuItem{{Title: "Main"}}, cursor: 0}}
 	m.menuItems = []MenuItem{{Title: "Old1"}, {Title: "Old2"}}
 	m.cursor = 1
 
@@ -1030,9 +1081,9 @@ func TestMenuRefreshMsg_UpdatesItemsInPlace(t *testing.T) {
 	if m2.menuItems[0].Title != "New1" {
 		t.Errorf("first item = %q, want New1", m2.menuItems[0].Title)
 	}
-	// parentItems should be unchanged (not overwritten).
-	if len(m2.parentItems) != 1 || m2.parentItems[0].Title != "Main" {
-		t.Error("parentItems should remain unchanged after refresh")
+	// menuStack should be unchanged (not overwritten).
+	if len(m2.menuStack) != 1 || m2.menuStack[0].items[0].Title != "Main" {
+		t.Error("menuStack should remain unchanged after refresh")
 	}
 	// cursor should stay at 1 (within bounds).
 	if m2.cursor != 1 {
@@ -1056,10 +1107,10 @@ func TestMenuRefreshMsg_ClampsCursor(t *testing.T) {
 
 func TestRefreshSkippedWhenGoBackReturnsToMain(t *testing.T) {
 	m := New(nil)
-	// Detail screen without parentItems → goBack returns to screenMain.
+	// Detail screen without menuStack → goBack returns to screenMain.
 	m.screen = screenDetail
 	m.needsMenuRefresh = true
-	m.parentItems = nil
+	m.menuStack = nil
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	m2 := updated.(Model)
@@ -1078,7 +1129,7 @@ func TestRefreshTriggeredWhenDismissingSettingsDetail(t *testing.T) {
 	m := New(nil)
 	m.screen = screenDetail
 	m.needsMenuRefresh = true
-	m.parentItems = []MenuItem{{Title: "Parent"}}
+	m.menuStack = []menuState{{items: []MenuItem{{Title: "Parent"}}, cursor: 0}}
 	m.menuItems = []MenuItem{{Title: "Old"}}
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
@@ -1514,8 +1565,8 @@ func TestConfirmFlow_EndToEnd_Cancel(t *testing.T) {
 func TestConfirmFlow_Submenu_Accept(t *testing.T) {
 	executed := false
 	m := New(nil)
-	// Simulate being in a plugin submenu: parentItems is set.
-	m.parentItems = []MenuItem{{Title: "Back"}}
+	// Simulate being in a plugin submenu: menuStack has parent state.
+	m.menuStack = []menuState{{items: []MenuItem{{Title: "Back"}}, cursor: 0}}
 	m.screen = screenConfirm
 	m.confirmTitle = "Run Update?"
 	m.confirmMsg = "This will update all packages."
@@ -1556,7 +1607,7 @@ func TestConfirmFlow_Submenu_Accept(t *testing.T) {
 
 func TestConfirmFlow_Submenu_Cancel(t *testing.T) {
 	m := New(nil)
-	m.parentItems = []MenuItem{{Title: "Back"}}
+	m.menuStack = []menuState{{items: []MenuItem{{Title: "Back"}}, cursor: 0}}
 	m.screen = screenConfirm
 	m.confirmTitle = "Delete?"
 	m.confirmAction = func() tea.Cmd { return nil }
@@ -1581,7 +1632,7 @@ func TestConfirmFlow_Submenu_Cancel(t *testing.T) {
 
 func TestJobAcceptedMsg_TransitionsToProgress(t *testing.T) {
 	m := New(nil)
-	m.parentItems = []MenuItem{{Title: "Back"}}
+	m.menuStack = []menuState{{items: []MenuItem{{Title: "Back"}}, cursor: 0}}
 	m.screen = screenSub
 	m.loading = true
 
@@ -1804,7 +1855,7 @@ func TestJobPollMsg_IgnoredOutsideProgress(t *testing.T) {
 
 func TestProgressScreen_EscDismisses(t *testing.T) {
 	m := New(nil)
-	m.parentItems = []MenuItem{{Title: "Back"}}
+	m.menuStack = []menuState{{items: []MenuItem{{Title: "Back"}}, cursor: 0}}
 	m.screen = screenProgress
 	m.progressJobID = "update.full"
 	m.progressTitle = "Full Update"
@@ -1831,7 +1882,7 @@ func TestProgressScreen_QDismisses(t *testing.T) {
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	um := updated.(Model)
 	if um.screen != screenMain {
-		t.Errorf("screen: got %d, want screenMain (no parentItems)", um.screen)
+		t.Errorf("screen: got %d, want screenMain (no menuStack)", um.screen)
 	}
 }
 
@@ -2059,5 +2110,367 @@ func TestProgressScreen_EscKeyType(t *testing.T) {
 	um := updated.(Model)
 	if um.screen == screenProgress {
 		t.Error("Esc (KeyType) should dismiss progress screen")
+	}
+}
+
+// --- TUI-TEST-1: handleInputKey with network static IP keys ---
+
+func TestHandleInputKey_NetworkStaticIP_EmptyAddress(t *testing.T) {
+	m := New(nil)
+	m.screen = screenInput
+	m.inputBuffer = ""
+	m.inputKey = inputKeyNetworkStaticIPPrefix + "eth0"
+	m.inputPlugin = "network"
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updated.(Model)
+	if cmd != nil {
+		t.Error("empty address should not produce a cmd")
+	}
+	if m2.statusMsg != "Address cannot be empty" {
+		t.Errorf("statusMsg = %q, want %q", m2.statusMsg, "Address cannot be empty")
+	}
+}
+
+func TestHandleInputKey_NetworkStaticIP_NoCIDR(t *testing.T) {
+	m := New(nil)
+	m.screen = screenInput
+	m.inputBuffer = "192.168.1.10"
+	m.inputKey = inputKeyNetworkStaticIPPrefix + "eth0"
+	m.inputPlugin = "network"
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updated.(Model)
+	if cmd != nil {
+		t.Error("address without CIDR should not produce a cmd")
+	}
+	if !strings.Contains(m2.statusMsg, "CIDR format") {
+		t.Errorf("statusMsg %q should mention CIDR format", m2.statusMsg)
+	}
+}
+
+func TestHandleInputKey_NetworkStaticIP_Valid(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(NetworkWriteResult{Message: "ok", Changes: []string{"set address"}})
+	}))
+	defer srv.Close()
+
+	m := New(nil)
+	m.api = NewAPIClient(srv.URL)
+	m.screen = screenInput
+	m.inputBuffer = "192.168.1.10/24"
+	m.inputKey = inputKeyNetworkStaticIPPrefix + "eth0"
+	m.inputPlugin = "network"
+
+	// Enter should transition to confirmation screen, not execute immediately.
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updated.(Model)
+	if m2.screen != screenConfirm {
+		t.Fatalf("expected screenConfirm, got %d", m2.screen)
+	}
+	if cmd != nil {
+		t.Error("confirmation screen should not produce a cmd")
+	}
+	if m2.confirmAction == nil {
+		t.Fatal("confirmAction should be set")
+	}
+	if !strings.Contains(m2.confirmMsg, "192.168.1.10/24") || !strings.Contains(m2.confirmMsg, "eth0") {
+		t.Errorf("confirmMsg should mention address and interface, got: %s", m2.confirmMsg)
+	}
+
+	// Simulate pressing "y" to confirm.
+	updated2, cmd2 := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	m3 := updated2.(Model)
+	if !m3.loading {
+		t.Error("after confirm, loading should be true")
+	}
+	if cmd2 == nil {
+		t.Fatal("after confirm, should return a non-nil cmd")
+	}
+
+	// Execute the closure and assert the apiResultMsg.
+	msg := cmd2()
+	result, ok := msg.(apiResultMsg)
+	if !ok {
+		t.Fatalf("expected apiResultMsg, got %T", msg)
+	}
+	if result.err != nil {
+		t.Fatalf("unexpected error: %v", result.err)
+	}
+	if !result.refreshMenu {
+		t.Error("expected refreshMenu=true")
+	}
+	if !strings.Contains(result.detail, "Static IP set for eth0") {
+		t.Errorf("detail should mention eth0, got: %s", result.detail)
+	}
+}
+
+func TestHandleInputKey_NetworkStaticIP_Cancel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("API should not be called on cancel; got %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+
+	m := New(nil)
+	m.api = NewAPIClient(srv.URL)
+	m.screen = screenInput
+	m.inputBuffer = "192.168.1.10/24"
+	m.inputKey = inputKeyNetworkStaticIPPrefix + "eth0"
+	m.inputPlugin = "network"
+
+	// Enter should transition to confirmation screen.
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updated.(Model)
+	if m2.screen != screenConfirm {
+		t.Fatalf("expected screenConfirm, got %d", m2.screen)
+	}
+	if cmd != nil {
+		t.Error("Enter should transition to confirm, not return a cmd")
+	}
+
+	// Simulate pressing "n" to cancel.
+	updated2, cmd2 := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	m3 := updated2.(Model)
+	if m3.screen == screenConfirm {
+		t.Error("after cancel, screen should not remain on screenConfirm")
+	}
+	if m3.loading {
+		t.Error("after cancel, loading should be false")
+	}
+	if cmd2 != nil {
+		t.Error("after cancel, cmd should be nil")
+	}
+	if m3.confirmAction != nil {
+		t.Error("after cancel, confirmAction should be cleared")
+	}
+}
+
+func TestHandleInputKey_NetworkStaticIP_APIError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]any{"message": "device busy"},
+		})
+	}))
+	defer srv.Close()
+
+	m := New(nil)
+	m.api = NewAPIClient(srv.URL)
+	m.screen = screenInput
+	m.inputBuffer = "192.168.1.10/24"
+	m.inputKey = inputKeyNetworkStaticIPPrefix + "eth0"
+	m.inputPlugin = "network"
+
+	// Enter should transition to confirmation screen.
+	updated, enterCmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updated.(Model)
+	if m2.screen != screenConfirm {
+		t.Fatalf("expected screenConfirm, got %d", m2.screen)
+	}
+	if enterCmd != nil {
+		t.Error("Enter should transition to confirm, not return a cmd")
+	}
+	if m2.confirmAction == nil {
+		t.Fatal("confirmAction should be set")
+	}
+
+	// Simulate pressing "y" to confirm.
+	_, cmd := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+
+	msg := cmd()
+	result, ok := msg.(apiResultMsg)
+	if !ok {
+		t.Fatalf("expected apiResultMsg, got %T", msg)
+	}
+	if result.err == nil {
+		t.Fatal("expected non-nil error for 500 response")
+	}
+	if !strings.Contains(result.err.Error(), "device busy") {
+		t.Errorf("error %q should contain 'device busy'", result.err.Error())
+	}
+}
+
+// --- TUI-TEST-2: handleInputKey with network DNS keys ---
+
+func TestHandleInputKey_NetworkDNS_Empty(t *testing.T) {
+	m := New(nil)
+	m.screen = screenInput
+	m.inputBuffer = ""
+	m.inputKey = inputKeyNetworkDNS
+	m.inputPlugin = "network"
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updated.(Model)
+	if cmd != nil {
+		t.Error("empty DNS should not produce a cmd")
+	}
+	if m2.statusMsg != "At least one DNS server required" {
+		t.Errorf("statusMsg = %q, want %q", m2.statusMsg, "At least one DNS server required")
+	}
+}
+
+func TestHandleInputKey_NetworkDNS_OnlyCommas(t *testing.T) {
+	m := New(nil)
+	m.screen = screenInput
+	m.inputBuffer = ",,,"
+	m.inputKey = inputKeyNetworkDNS
+	m.inputPlugin = "network"
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updated.(Model)
+	if cmd != nil {
+		t.Error("commas-only DNS should not produce a cmd")
+	}
+	if m2.statusMsg != "At least one DNS server required" {
+		t.Errorf("statusMsg = %q, want %q", m2.statusMsg, "At least one DNS server required")
+	}
+}
+
+func TestHandleInputKey_NetworkDNS_Valid(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(NetworkWriteResult{Message: "ok", Changes: []string{"set nameservers"}})
+	}))
+	defer srv.Close()
+
+	m := New(nil)
+	m.api = NewAPIClient(srv.URL)
+	m.screen = screenInput
+	m.inputBuffer = "8.8.8.8, 1.1.1.1"
+	m.inputKey = inputKeyNetworkDNS
+	m.inputPlugin = "network"
+
+	// Enter should transition to confirmation screen, not execute immediately.
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updated.(Model)
+	if m2.screen != screenConfirm {
+		t.Fatalf("expected screenConfirm, got %d", m2.screen)
+	}
+	if cmd != nil {
+		t.Error("confirmation screen should not produce a cmd")
+	}
+	if m2.confirmAction == nil {
+		t.Fatal("confirmAction should be set")
+	}
+	if !strings.Contains(m2.confirmMsg, "8.8.8.8") {
+		t.Errorf("confirmMsg should mention DNS servers, got: %s", m2.confirmMsg)
+	}
+
+	// Simulate pressing "y" to confirm.
+	updated2, cmd2 := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	m3 := updated2.(Model)
+	if !m3.loading {
+		t.Error("after confirm, loading should be true")
+	}
+	if cmd2 == nil {
+		t.Fatal("after confirm, should return a non-nil cmd")
+	}
+
+	// Execute the closure and assert the apiResultMsg.
+	msg := cmd2()
+	result, ok := msg.(apiResultMsg)
+	if !ok {
+		t.Fatalf("expected apiResultMsg, got %T", msg)
+	}
+	if result.err != nil {
+		t.Fatalf("unexpected error: %v", result.err)
+	}
+	if !result.refreshMenu {
+		t.Error("expected refreshMenu=true")
+	}
+	if !strings.Contains(result.detail, "DNS servers updated") {
+		t.Errorf("detail should mention DNS update, got: %s", result.detail)
+	}
+}
+
+func TestHandleInputKey_NetworkDNS_Cancel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("API should not be called on cancel; got %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+
+	m := New(nil)
+	m.api = NewAPIClient(srv.URL)
+	m.screen = screenInput
+	m.inputBuffer = "8.8.8.8"
+	m.inputKey = inputKeyNetworkDNS
+	m.inputPlugin = "network"
+
+	// Enter should transition to confirmation screen.
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updated.(Model)
+	if m2.screen != screenConfirm {
+		t.Fatalf("expected screenConfirm, got %d", m2.screen)
+	}
+	if cmd != nil {
+		t.Error("Enter should transition to confirm, not return a cmd")
+	}
+
+	// Simulate pressing "n" to cancel.
+	updated2, cmd2 := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	m3 := updated2.(Model)
+	if m3.screen == screenConfirm {
+		t.Error("after cancel, screen should not remain on screenConfirm")
+	}
+	if m3.loading {
+		t.Error("after cancel, loading should be false")
+	}
+	if cmd2 != nil {
+		t.Error("after cancel, cmd should be nil")
+	}
+	if m3.confirmAction != nil {
+		t.Error("after cancel, confirmAction should be cleared")
+	}
+}
+
+func TestHandleInputKey_NetworkDNS_APIError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]any{"message": "write failed"},
+		})
+	}))
+	defer srv.Close()
+
+	m := New(nil)
+	m.api = NewAPIClient(srv.URL)
+	m.screen = screenInput
+	m.inputBuffer = "8.8.8.8"
+	m.inputKey = inputKeyNetworkDNS
+	m.inputPlugin = "network"
+
+	// Enter should transition to confirmation screen.
+	updated, enterCmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updated.(Model)
+	if m2.screen != screenConfirm {
+		t.Fatalf("expected screenConfirm, got %d", m2.screen)
+	}
+	if enterCmd != nil {
+		t.Error("Enter should transition to confirm, not return a cmd")
+	}
+	if m2.confirmAction == nil {
+		t.Fatal("confirmAction should be set")
+	}
+
+	// Simulate pressing "y" to confirm.
+	_, cmd := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+
+	msg := cmd()
+	result, ok := msg.(apiResultMsg)
+	if !ok {
+		t.Fatalf("expected apiResultMsg, got %T", msg)
+	}
+	if result.err == nil {
+		t.Fatal("expected non-nil error for 500 response")
+	}
+	if !strings.Contains(result.err.Error(), "write failed") {
+		t.Errorf("error %q should contain 'write failed'", result.err.Error())
 	}
 }

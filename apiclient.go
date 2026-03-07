@@ -149,6 +149,28 @@ type NetworkStatus struct {
 	InternetReachable bool   `json:"internet_reachable"`
 }
 
+// StaticIPConfig is the request body for PUT /api/v1/plugins/network/interfaces/{name}.
+type StaticIPConfig struct {
+	Address string `json:"address"`
+	Gateway string `json:"gateway,omitempty"`
+	Netmask string `json:"netmask,omitempty"`
+}
+
+// DNSWriteConfig is the request body for PUT /api/v1/plugins/network/dns.
+type DNSWriteConfig struct {
+	Nameservers []string `json:"nameservers"`
+	Search      []string `json:"search,omitempty"`
+}
+
+// NetworkWriteResult is the response from network write operations.
+type NetworkWriteResult struct {
+	Valid    bool           `json:"valid,omitempty"`
+	Changes  []string       `json:"changes,omitempty"`
+	Current  map[string]any `json:"current,omitempty"`
+	Proposed map[string]any `json:"proposed,omitempty"`
+	Message  string         `json:"message,omitempty"`
+}
+
 // --- Path validation ---
 
 // validateAPIPath checks that an API path is safe before use in HTTP requests.
@@ -438,6 +460,88 @@ func (c *APIClient) GetNetworkStatus() (*NetworkStatus, error) {
 	return &s, nil
 }
 
+// validIfaceName matches safe interface names (alphanumeric plus hyphens, dots, underscores, and colons for alias interfaces).
+// Linux limits interface names to 15 characters (IFNAMSIZ-1).
+var validIfaceName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,14}$`)
+
+// withDryRun appends the dry_run=true query parameter when dryRun is true.
+func withDryRun(path string, dryRun bool) string {
+	if dryRun {
+		if strings.Contains(path, "?") {
+			return path + "&dry_run=true"
+		}
+		return path + "?dry_run=true"
+	}
+	return path
+}
+
+// SetStaticIP configures a static IP on the given interface.
+func (c *APIClient) SetStaticIP(name string, cfg StaticIPConfig, dryRun bool) (*NetworkWriteResult, error) {
+	if !validIfaceName.MatchString(name) {
+		return nil, fmt.Errorf("invalid interface name: %q", name)
+	}
+	payload, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, err
+	}
+	path := withDryRun("/api/v1/plugins/network/interfaces/"+name, dryRun)
+	var r NetworkWriteResult
+	if err := c.putConfirmJSON(path, string(payload), &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// SetDNS configures DNS servers.
+func (c *APIClient) SetDNS(cfg DNSWriteConfig, dryRun bool) (*NetworkWriteResult, error) {
+	payload, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, err
+	}
+	path := withDryRun("/api/v1/plugins/network/dns", dryRun)
+	var r NetworkWriteResult
+	if err := c.putConfirmJSON(path, string(payload), &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// DeleteStaticIP removes static IP config, reverting to DHCP.
+func (c *APIClient) DeleteStaticIP(name string, dryRun bool) (*NetworkWriteResult, error) {
+	if !validIfaceName.MatchString(name) {
+		return nil, fmt.Errorf("invalid interface name: %q", name)
+	}
+	path := withDryRun("/api/v1/plugins/network/interfaces/"+name, dryRun)
+	var r NetworkWriteResult
+	if err := c.deleteConfirmJSON(path, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// RollbackInterface restores previous interface configuration.
+func (c *APIClient) RollbackInterface(name string, dryRun bool) (*NetworkWriteResult, error) {
+	if !validIfaceName.MatchString(name) {
+		return nil, fmt.Errorf("invalid interface name: %q", name)
+	}
+	path := withDryRun("/api/v1/plugins/network/interfaces/"+name+"/rollback", dryRun)
+	var r NetworkWriteResult
+	if err := c.postConfirmJSON(path, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// RollbackDNS restores previous DNS configuration.
+func (c *APIClient) RollbackDNS(dryRun bool) (*NetworkWriteResult, error) {
+	path := withDryRun("/api/v1/plugins/network/dns/rollback", dryRun)
+	var r NetworkWriteResult
+	if err := c.postConfirmJSON(path, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
 func (c *APIClient) getJSON(path string, out interface{}) error {
 	req, err := http.NewRequest(http.MethodGet, c.baseURL+path, nil)
 	if err != nil {
@@ -513,4 +617,55 @@ func (c *APIClient) putJSON(path, body string, out interface{}) error {
 		return fmt.Errorf("decode %s: %w", path, err)
 	}
 	return nil
+}
+
+// doConfirmJSON sends an HTTP request with X-Confirm: true header and optional
+// JSON body. It is the shared implementation for putConfirmJSON,
+// deleteConfirmJSON, and postConfirmJSON.
+func (c *APIClient) doConfirmJSON(method, path string, body string, out interface{}) error {
+	var bodyReader io.Reader
+	if body != "" {
+		bodyReader = strings.NewReader(body)
+	}
+	req, err := http.NewRequest(method, c.baseURL+path, bodyReader)
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("X-Confirm", "true")
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		b, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort error body
+		return friendlyAPIError(method, path, resp.StatusCode, b)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("decode %s: %w", path, err)
+	}
+	return nil
+}
+
+// putConfirmJSON sends a PUT with X-Confirm: true header and JSON body.
+func (c *APIClient) putConfirmJSON(path, body string, out interface{}) error {
+	return c.doConfirmJSON(http.MethodPut, path, body, out)
+}
+
+// deleteConfirmJSON sends a DELETE with X-Confirm: true header.
+func (c *APIClient) deleteConfirmJSON(path string, out interface{}) error {
+	return c.doConfirmJSON(http.MethodDelete, path, "", out)
+}
+
+// postConfirmJSON sends a POST with X-Confirm: true header and no body.
+func (c *APIClient) postConfirmJSON(path string, out interface{}) error {
+	return c.doConfirmJSON(http.MethodPost, path, "", out)
 }

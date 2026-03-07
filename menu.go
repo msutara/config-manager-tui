@@ -14,6 +14,13 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// Input key prefixes used to route handleInputKey to the correct network write
+// operation. Defined once here and referenced in both menu.go and tui.go.
+const (
+	inputKeyNetworkStaticIPPrefix = "network.static_ip."
+	inputKeyNetworkDNS            = "network.dns"
+)
+
 // PluginInfo describes a registered plugin for menu rendering. The core binary
 // populates this from its plugin registry — the TUI has no direct dependency
 // on the core plugin package.
@@ -592,6 +599,12 @@ func actionNetworkMenu(api *APIClient) func() tea.Cmd {
 					{Title: "List Interfaces", Description: "Show network interfaces", Action: actionNetworkInterfaces(api)},
 					{Title: "Network Status", Description: "Overall connectivity status", Action: actionNetworkStatus(api)},
 					{Title: "DNS Settings", Description: "View DNS configuration", Action: actionNetworkDNS(api)},
+					{Title: "──── Actions ────", Description: ""},
+					{Title: "Set Static IP", Description: "Configure static IP for an interface", Action: actionNetworkSetStaticIP(api)},
+					{Title: "Set DNS Servers", Description: "Configure DNS nameservers", Action: actionNetworkSetDNS(api)},
+					{Title: "Delete Static IP", Description: "Remove static IP, revert to DHCP", Action: actionNetworkDeleteStaticIP(api)},
+					{Title: "Rollback Interface", Description: "Restore previous interface config", Action: actionNetworkRollbackInterface(api)},
+					{Title: "Rollback DNS", Description: "Restore previous DNS config", Action: actionNetworkRollbackDNS(api), NeedsConfirm: true, ConfirmMsg: "Restore DNS to its previous configuration?"},
 					{Title: "Back", Description: "Return to main menu", Action: func() tea.Cmd {
 						return func() tea.Msg { return subMenuMsg{} }
 					}},
@@ -663,6 +676,201 @@ func actionNetworkDNS(api *APIClient) func() tea.Cmd {
 			}
 			detail := fmt.Sprintf("Nameservers:  %s\nSearch:       %s", servers, search)
 			return apiResultMsg{detail: detail}
+		}
+	}
+}
+
+// formatNetworkWriteResult builds a human-readable detail string from a network write response.
+func formatNetworkWriteResult(operation string, res *NetworkWriteResult) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\n", sanitizeText(operation)) //nolint:errcheck // writes to strings.Builder
+	if res.Message != "" {
+		fmt.Fprintf(&b, "\n%s\n", sanitizeText(res.Message)) //nolint:errcheck // writes to strings.Builder
+	}
+	if len(res.Changes) > 0 {
+		b.WriteString("\nChanges applied:\n") //nolint:errcheck // writes to strings.Builder
+		for _, c := range res.Changes {
+			fmt.Fprintf(&b, "  • %s\n", sanitizeText(c)) //nolint:errcheck // writes to strings.Builder
+		}
+	}
+	return b.String()
+}
+
+// actionNetworkSetStaticIP shows interface picker, then collects IP config via input screens.
+func actionNetworkSetStaticIP(api *APIClient) func() tea.Cmd {
+	return func() tea.Cmd {
+		return func() tea.Msg {
+			ifaces, err := api.GetNetworkInterfaces()
+			if err != nil {
+				return apiResultMsg{err: err}
+			}
+			if len(ifaces) == 0 {
+				return apiResultMsg{err: fmt.Errorf("no network interfaces found")}
+			}
+			items := make([]MenuItem, 0, len(ifaces)+1)
+			for _, iface := range ifaces {
+				ifName := iface.Name
+				if !validIfaceName.MatchString(ifName) {
+					continue
+				}
+				currentIP := iface.IP
+				desc := fmt.Sprintf("State: %s  IP: %s", sanitizeText(iface.State), sanitizeText(iface.IP))
+				items = append(items, MenuItem{
+					Title:       sanitizeText(ifName),
+					Description: desc,
+					Action: func() tea.Cmd {
+						return func() tea.Msg {
+							return editInputMsg{
+								prompt:     fmt.Sprintf("Static IP for %s (CIDR, e.g. 192.168.1.10/24):", sanitizeText(ifName)),
+								key:        inputKeyNetworkStaticIPPrefix + ifName,
+								plugin:     "network",
+								currentVal: currentIP,
+							}
+						}
+					},
+				})
+			}
+			if len(items) == 0 {
+				return apiResultMsg{err: fmt.Errorf("no valid network interfaces found")}
+			}
+			items = append(items, MenuItem{
+				Title:       "Back",
+				Description: "Return to network menu",
+				Action:      func() tea.Cmd { return func() tea.Msg { return subMenuMsg{} } },
+			})
+			return subMenuMsg{title: "Set Static IP — Select Interface", items: items}
+		}
+	}
+}
+
+// actionNetworkSetDNS collects DNS servers via input screen.
+func actionNetworkSetDNS(api *APIClient) func() tea.Cmd {
+	return func() tea.Cmd {
+		return func() tea.Msg {
+			dns, err := api.GetDNS()
+			if err != nil {
+				return apiResultMsg{err: err}
+			}
+			currentServers := ""
+			if len(dns.Nameservers) > 0 {
+				currentServers = strings.Join(dns.Nameservers, ", ")
+			}
+			return editInputMsg{
+				prompt:     "DNS servers (comma-separated, e.g. 8.8.8.8, 1.1.1.1):",
+				key:        inputKeyNetworkDNS,
+				plugin:     "network",
+				currentVal: currentServers,
+			}
+		}
+	}
+}
+
+// actionNetworkDeleteStaticIP shows interface picker, then confirms deletion.
+func actionNetworkDeleteStaticIP(api *APIClient) func() tea.Cmd {
+	return func() tea.Cmd {
+		return func() tea.Msg {
+			ifaces, err := api.GetNetworkInterfaces()
+			if err != nil {
+				return apiResultMsg{err: err}
+			}
+			if len(ifaces) == 0 {
+				return apiResultMsg{err: fmt.Errorf("no network interfaces found")}
+			}
+			items := make([]MenuItem, 0, len(ifaces)+1)
+			for _, iface := range ifaces {
+				ifName := iface.Name
+				if !validIfaceName.MatchString(ifName) {
+					continue
+				}
+				desc := fmt.Sprintf("State: %s  IP: %s", sanitizeText(iface.State), sanitizeText(iface.IP))
+				items = append(items, MenuItem{
+					Title:        sanitizeText(ifName),
+					Description:  desc,
+					NeedsConfirm: true,
+					ConfirmMsg:   fmt.Sprintf("Remove static IP for %s? Interface will revert to DHCP.", sanitizeText(ifName)),
+					Action: func() tea.Cmd {
+						return func() tea.Msg {
+							res, err := api.DeleteStaticIP(ifName, false)
+							if err != nil {
+								return apiResultMsg{err: err}
+							}
+							detail := formatNetworkWriteResult(fmt.Sprintf("Static IP removed from %s", ifName), res)
+							return apiResultMsg{detail: detail, refreshMenu: true}
+						}
+					},
+				})
+			}
+			if len(items) == 0 {
+				return apiResultMsg{err: fmt.Errorf("no valid network interfaces found")}
+			}
+			items = append(items, MenuItem{
+				Title:       "Back",
+				Description: "Return to network menu",
+				Action:      func() tea.Cmd { return func() tea.Msg { return subMenuMsg{} } },
+			})
+			return subMenuMsg{title: "Delete Static IP — Select Interface", items: items}
+		}
+	}
+}
+
+// actionNetworkRollbackInterface shows interface picker, then confirms rollback.
+func actionNetworkRollbackInterface(api *APIClient) func() tea.Cmd {
+	return func() tea.Cmd {
+		return func() tea.Msg {
+			ifaces, err := api.GetNetworkInterfaces()
+			if err != nil {
+				return apiResultMsg{err: err}
+			}
+			if len(ifaces) == 0 {
+				return apiResultMsg{err: fmt.Errorf("no network interfaces found")}
+			}
+			items := make([]MenuItem, 0, len(ifaces)+1)
+			for _, iface := range ifaces {
+				ifName := iface.Name
+				if !validIfaceName.MatchString(ifName) {
+					continue
+				}
+				desc := fmt.Sprintf("State: %s  IP: %s", sanitizeText(iface.State), sanitizeText(iface.IP))
+				items = append(items, MenuItem{
+					Title:        sanitizeText(ifName),
+					Description:  desc,
+					NeedsConfirm: true,
+					ConfirmMsg:   fmt.Sprintf("Rollback %s to its previous configuration?", sanitizeText(ifName)),
+					Action: func() tea.Cmd {
+						return func() tea.Msg {
+							res, err := api.RollbackInterface(ifName, false)
+							if err != nil {
+								return apiResultMsg{err: err}
+							}
+							detail := formatNetworkWriteResult(fmt.Sprintf("Rolled back %s", ifName), res)
+							return apiResultMsg{detail: detail, refreshMenu: true}
+						}
+					},
+				})
+			}
+			if len(items) == 0 {
+				return apiResultMsg{err: fmt.Errorf("no valid network interfaces found")}
+			}
+			items = append(items, MenuItem{
+				Title:       "Back",
+				Description: "Return to network menu",
+				Action:      func() tea.Cmd { return func() tea.Msg { return subMenuMsg{} } },
+			})
+			return subMenuMsg{title: "Rollback Interface — Select Interface", items: items}
+		}
+	}
+}
+
+// actionNetworkRollbackDNS confirms and rolls back DNS configuration.
+func actionNetworkRollbackDNS(api *APIClient) func() tea.Cmd {
+	return func() tea.Cmd {
+		return func() tea.Msg {
+			res, err := api.RollbackDNS(false)
+			if err != nil {
+				return apiResultMsg{err: err}
+			}
+			detail := formatNetworkWriteResult("DNS configuration rolled back", res)
+			return apiResultMsg{detail: detail, refreshMenu: true}
 		}
 	}
 }
