@@ -38,6 +38,14 @@ const (
 	ModeConnected
 )
 
+// menuState captures the items, cursor and title of a menu level so that
+// nested sub-menus can be unwound correctly.
+type menuState struct {
+	items  []MenuItem
+	cursor int
+	title  string
+}
+
 // Model is the main Bubble Tea model for the Config Manager TUI.
 type Model struct {
 	api       *APIClient
@@ -49,13 +57,12 @@ type Model struct {
 	theme     Theme
 
 	screen           screen
-	screenTitle      string     // title for sub-menu / detail view
-	detail           string     // rendered content for detail screen
-	parentItems      []MenuItem // saved main menu for returning from sub-menu
-	parentCursor     int        // saved cursor position for returning from sub-menu
-	statusMsg        string     // transient status message
-	loading          bool       // true while an async command is in flight
-	needsMenuRefresh bool       // detail screen should rebuild the sub-menu on dismiss
+	screenTitle      string      // title for sub-menu / detail view
+	detail           string      // rendered content for detail screen
+	menuStack        []menuState // stack of parent menu states for nested sub-menus
+	statusMsg        string      // transient status message
+	loading          bool        // true while an async command is in flight
+	needsMenuRefresh bool        // detail screen should rebuild the sub-menu on dismiss
 
 	// Input screen state (screenInput).
 	inputBuffer string // current text being edited
@@ -159,6 +166,7 @@ type editInputMsg struct {
 // settings change) without pushing a new navigation level.
 type menuRefreshMsg struct {
 	items []MenuItem
+	title string // when non-empty, also updates screenTitle
 }
 
 // jobAcceptedMsg tells Update to switch to the progress screen and start polling.
@@ -312,6 +320,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.statusMsg = ""
 		m.menuItems = msg.items
+		if msg.title != "" {
+			m.screenTitle = msg.title
+		}
 		// Keep cursor in bounds after items may have changed count.
 		if m.cursor >= len(msg.items) {
 			m.cursor = max(0, len(msg.items)-1)
@@ -325,8 +336,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.goBack()
 			return m, nil
 		}
-		m.parentItems = m.menuItems
-		m.parentCursor = m.cursor
+		m.menuStack = append(m.menuStack, menuState{
+			items:  m.menuItems,
+			cursor: m.cursor,
+			title:  m.screenTitle,
+		})
 		m.menuItems = msg.items
 		m.cursor = 0
 		m.screen = screenSub
@@ -368,16 +382,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// After a successful settings change, rebuild the sub-menu
 			// so descriptions (e.g. "Currently: ON") reflect the new state.
 			if refresh && m.screen == screenSub && m.api != nil {
+				// If returning from a child interface picker, pop back to
+				// the parent Network Manager level before rebuilding.
+				switch m.screenTitle {
+				case "Set Static IP — Select Interface",
+					"Delete Static IP — Select Interface",
+					"Rollback Interface — Select Interface":
+					if len(m.menuStack) > 0 {
+						state := m.menuStack[len(m.menuStack)-1]
+						m.menuStack = m.menuStack[:len(m.menuStack)-1]
+						m.menuItems = state.items
+						m.cursor = state.cursor
+						m.screenTitle = state.title
+					}
+				}
 				m.loading = true
 				m.statusMsg = "Loading…"
 				api := m.api
 				stale := m.menuItems // fallback: keep current items
+				screenTitle := m.screenTitle
 				return m, func() tea.Msg {
-					// Re-run the update menu builder and extract the items.
-					inner := actionUpdateMenu(api)()
+					// Pick the correct menu builder based on the sub-menu title.
+					var builder func(*APIClient) func() tea.Cmd
+					switch screenTitle {
+					case "Network Manager",
+						"Set Static IP — Select Interface",
+						"Delete Static IP — Select Interface",
+						"Rollback Interface — Select Interface":
+						builder = actionNetworkMenu
+					default:
+						builder = actionUpdateMenu
+					}
+					inner := builder(api)()
 					raw := inner()
 					if sm, ok := raw.(subMenuMsg); ok {
-						return menuRefreshMsg{items: sm.items}
+						return menuRefreshMsg{items: sm.items, title: sm.title}
 					}
 					// Fallback: return stale items so loading is still cleared.
 					return menuRefreshMsg{items: stale}
@@ -443,6 +482,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // handleInputKey processes key events while the text input screen is active.
+// TODO: consider refactoring input key routing to use callbacks instead of key-prefix matching.
 func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.loading {
 		return m, nil
@@ -470,6 +510,59 @@ func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.statusMsg = fmt.Sprintf("Invalid: expected 5 fields, got %d (minute hour dom month dow)", len(fields))
 					return m, nil
 				}
+			}
+		}
+
+		// Network static IP — key format: "network.static_ip.{ifaceName}"
+		if strings.HasPrefix(key, inputKeyNetworkStaticIPPrefix) {
+			ifaceName := strings.TrimPrefix(key, inputKeyNetworkStaticIPPrefix)
+			if value == "" {
+				m.statusMsg = "Address cannot be empty"
+				return m, nil
+			}
+			if !strings.Contains(value, "/") {
+				m.statusMsg = "Address must be in CIDR format (e.g. 192.168.1.10/24)"
+				return m, nil
+			}
+			m.loading = true
+			m.statusMsg = "Applying…"
+			return m, func() tea.Msg {
+				res, err := api.SetStaticIP(ifaceName, StaticIPConfig{Address: value}, false)
+				if err != nil {
+					return apiResultMsg{err: err}
+				}
+				detail := formatNetworkWriteResult(fmt.Sprintf("Static IP set for %s", ifaceName), res)
+				return apiResultMsg{detail: detail, refreshMenu: true}
+			}
+		}
+
+		// Network DNS — key: "network.dns"
+		if key == inputKeyNetworkDNS {
+			if value == "" {
+				m.statusMsg = "At least one DNS server required"
+				return m, nil
+			}
+			servers := strings.Split(value, ",")
+			cleaned := make([]string, 0, len(servers))
+			for _, s := range servers {
+				s = strings.TrimSpace(s)
+				if s != "" {
+					cleaned = append(cleaned, s)
+				}
+			}
+			if len(cleaned) == 0 {
+				m.statusMsg = "At least one DNS server required"
+				return m, nil
+			}
+			m.loading = true
+			m.statusMsg = "Applying…"
+			return m, func() tea.Msg {
+				res, err := api.SetDNS(DNSWriteConfig{Nameservers: cleaned}, false)
+				if err != nil {
+					return apiResultMsg{err: err}
+				}
+				detail := formatNetworkWriteResult("DNS servers updated", res)
+				return apiResultMsg{detail: detail, refreshMenu: true}
 			}
 		}
 
@@ -506,7 +599,7 @@ func (m Model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "y", "Y":
 		action := m.confirmAction
 		m.screen = screenSub
-		if m.parentItems == nil {
+		if len(m.menuStack) == 0 {
 			m.screen = screenMain
 		}
 		m.confirmTitle = ""
@@ -520,7 +613,7 @@ func (m Model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, action()
 	case "n", "N", "esc", "q":
 		m.screen = screenSub
-		if m.parentItems == nil {
+		if len(m.menuStack) == 0 {
 			m.screen = screenMain
 		}
 		m.confirmTitle = ""
@@ -535,20 +628,28 @@ func (m Model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *Model) goBack() {
 	switch m.screen {
 	case screenSub:
-		m.menuItems = m.parentItems
-		m.parentItems = nil
-		m.cursor = m.parentCursor
-		m.parentCursor = 0
-		m.screen = screenMain
-		m.screenTitle = ""
+		if len(m.menuStack) > 0 {
+			state := m.menuStack[len(m.menuStack)-1]
+			m.menuStack = m.menuStack[:len(m.menuStack)-1]
+			m.menuItems = state.items
+			m.cursor = state.cursor
+			m.screenTitle = state.title
+			if len(m.menuStack) == 0 {
+				m.screen = screenMain
+				m.screenTitle = ""
+			}
+		} else {
+			m.screen = screenMain
+			m.screenTitle = ""
+		}
 	case screenDetail:
-		if m.parentItems != nil {
+		if len(m.menuStack) > 0 {
 			m.screen = screenSub
 		} else {
 			m.screen = screenMain
 		}
 	case screenInput:
-		if m.parentItems != nil {
+		if len(m.menuStack) > 0 {
 			m.screen = screenSub
 		} else {
 			m.screen = screenMain
@@ -558,7 +659,7 @@ func (m *Model) goBack() {
 		m.inputKey = ""
 		m.inputPlugin = ""
 	case screenProgress:
-		if m.parentItems != nil {
+		if len(m.menuStack) > 0 {
 			m.screen = screenSub
 		} else {
 			m.screen = screenMain

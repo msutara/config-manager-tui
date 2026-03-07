@@ -73,10 +73,36 @@ its own set of menu actions:
 - **Update Manager** — Check Status, Full Update, Security Update (when
   available), View Logs, View Settings, Edit Schedule, Toggle Auto-Security,
   Change Security Source
-- **Network Manager** — List Interfaces, Network Status, DNS Settings
+- **Network Manager** — List Interfaces, Network Status, DNS Settings, Set
+  Static IP, Set DNS, Delete Static IP, Rollback Interface, Rollback DNS
 
 Each submenu includes a "Back" item to return to the main menu. You can also
 press esc, q, or backspace to go back.
+
+### Nested Submenus
+
+Some actions open a second-level submenu. For example, **Set Static IP**,
+**Delete Static IP**, and **Rollback Interface** first show an interface picker
+listing all available network interfaces. Selecting an interface proceeds to
+the input or confirmation screen. Pressing Back from a nested submenu returns
+to the parent plugin submenu (not the main menu).
+
+### Network Write Operations
+
+The Network Manager submenu includes write actions that modify network
+configuration on the device:
+
+| Action | Description |
+| --- | --- |
+| Set Static IP | Select an interface, then enter a CIDR address (e.g. `192.168.1.10/24`) |
+| Set DNS | Edit the comma-separated list of DNS nameservers |
+| Delete Static IP | Select an interface to remove its static IP assignment |
+| Rollback Interface | Select an interface to revert to its previous configuration |
+| Rollback DNS | Revert DNS settings to the previous configuration |
+
+All write operations display a confirmation dialog before executing. After a
+successful write, the menu refreshes automatically to reflect the updated
+state.
 
 ## 6. Running
 
