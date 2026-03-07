@@ -80,7 +80,7 @@ func TestSetStaticIP_Success(t *testing.T) {
 }
 
 func TestSetStaticIP_InvalidName(t *testing.T) {
-	client := NewAPIClient("http://localhost:1")
+	client := NewAPIClient(closedTestServer())
 	_, err := client.SetStaticIP("../etc/passwd", StaticIPConfig{Address: "1.2.3.4/24"}, false)
 	if err == nil {
 		t.Fatal("expected error for invalid interface name")
@@ -209,7 +209,7 @@ func TestDeleteStaticIP_Success(t *testing.T) {
 }
 
 func TestDeleteStaticIP_InvalidName(t *testing.T) {
-	client := NewAPIClient("http://localhost:1")
+	client := NewAPIClient(closedTestServer())
 	_, err := client.DeleteStaticIP("", false)
 	if err == nil {
 		t.Fatal("expected error for empty interface name")
@@ -277,7 +277,7 @@ func TestRollbackInterface_Success(t *testing.T) {
 }
 
 func TestRollbackInterface_InvalidName(t *testing.T) {
-	client := NewAPIClient("http://localhost:1")
+	client := NewAPIClient(closedTestServer())
 	_, err := client.RollbackInterface("bad name!", false)
 	if err == nil {
 		t.Fatal("expected error for invalid interface name")
@@ -431,6 +431,9 @@ func TestValidIfaceName(t *testing.T) {
 		{"colon_alias", "eth0:1", true},
 		{"null_byte", "eth0\x00bad", false},
 		{"unicode", "ethö", false},
+		{"exactly_15_chars", "aaaaaaaaaaaaaaa", true},
+		{"16_chars_too_long", "aaaaaaaaaaaaaaaa", false},
+		{"long_name", "aaaaaaaaaaaaaaaaaaaaaaaaaaaa", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

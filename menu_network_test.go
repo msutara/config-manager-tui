@@ -50,11 +50,18 @@ func TestActionNetworkMenu_ItemCount(t *testing.T) {
 		}
 	}
 
-	// Verify the separator has a no-op Action (not nil).
+	// Verify the separator exists and has nil Action (non-selectable).
+	foundSeparator := false
 	for _, item := range sm.items {
-		if strings.Contains(item.Title, "────") && item.Action == nil {
-			t.Error("separator item should have a non-nil Action (no-op)")
+		if strings.Contains(item.Title, "────") {
+			foundSeparator = true
+			if item.Action != nil {
+				t.Error("separator item should have nil Action (non-selectable)")
+			}
 		}
+	}
+	if !foundSeparator {
+		t.Error("expected a separator item in the network menu")
 	}
 }
 
@@ -428,6 +435,114 @@ func TestActionNetworkRollbackInterface_ActionCallsAPI(t *testing.T) {
 	}
 }
 
+// --- Multi-interface closure isolation tests ---
+
+func TestActionNetworkSetStaticIP_MultiInterface_ClosureIsolation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]NetworkInterface{
+			{Name: "eth0", MAC: "aa:bb:cc:dd:ee:ff", IP: "10.0.0.1", State: "up"},
+			{Name: "wlan0", MAC: "11:22:33:44:55:66", IP: "10.0.0.2", State: "up"},
+		})
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	msg := actionNetworkSetStaticIP(api)()()
+	sm := msg.(subMenuMsg)
+
+	// 2 interfaces + Back
+	if len(sm.items) != 3 {
+		t.Fatalf("expected 3 items, got %d", len(sm.items))
+	}
+
+	// Each closure must reference its own interface.
+	for i, want := range []struct {
+		title string
+		key   string
+		ip    string
+	}{
+		{"eth0", inputKeyNetworkStaticIPPrefix + "eth0", "10.0.0.1"},
+		{"wlan0", inputKeyNetworkStaticIPPrefix + "wlan0", "10.0.0.2"},
+	} {
+		input := sm.items[i].Action()().(editInputMsg)
+		if input.key != want.key {
+			t.Errorf("item[%d] key = %q, want %q", i, input.key, want.key)
+		}
+		if !strings.Contains(input.prompt, want.title) {
+			t.Errorf("item[%d] prompt %q should mention %s", i, input.prompt, want.title)
+		}
+		if input.currentVal != want.ip {
+			t.Errorf("item[%d] currentVal = %q, want %q", i, input.currentVal, want.ip)
+		}
+	}
+}
+
+func TestActionNetworkDeleteStaticIP_MultiInterface_ClosureIsolation(t *testing.T) {
+	var deletedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			json.NewEncoder(w).Encode([]NetworkInterface{
+				{Name: "eth0", MAC: "aa:bb:cc:dd:ee:ff", IP: "10.0.0.1", State: "up"},
+				{Name: "br0", MAC: "11:22:33:44:55:66", IP: "10.0.0.2", State: "up"},
+			})
+			return
+		}
+		deletedPath = r.URL.Path
+		json.NewEncoder(w).Encode(NetworkWriteResult{Message: "ok"})
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	msg := actionNetworkDeleteStaticIP(api)()()
+	sm := msg.(subMenuMsg)
+
+	if len(sm.items) != 3 {
+		t.Fatalf("expected 3 items, got %d", len(sm.items))
+	}
+
+	// Invoke second item (br0) — must call DELETE for br0, not eth0.
+	result := sm.items[1].Action()().(apiResultMsg)
+	if result.err != nil {
+		t.Fatalf("unexpected error: %v", result.err)
+	}
+	if !strings.Contains(deletedPath, "/br0") {
+		t.Errorf("expected DELETE for br0, got path %q", deletedPath)
+	}
+}
+
+func TestActionNetworkRollbackInterface_MultiInterface_ClosureIsolation(t *testing.T) {
+	var rolledBackPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			json.NewEncoder(w).Encode([]NetworkInterface{
+				{Name: "eth0", MAC: "aa:bb:cc:dd:ee:ff", IP: "10.0.0.1", State: "up"},
+				{Name: "wlan1", MAC: "11:22:33:44:55:66", IP: "10.0.0.2", State: "up"},
+			})
+			return
+		}
+		rolledBackPath = r.URL.Path
+		json.NewEncoder(w).Encode(NetworkWriteResult{Message: "ok"})
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	msg := actionNetworkRollbackInterface(api)()()
+	sm := msg.(subMenuMsg)
+
+	if len(sm.items) != 3 {
+		t.Fatalf("expected 3 items, got %d", len(sm.items))
+	}
+
+	// Invoke second item (wlan1) — must call rollback for wlan1, not eth0.
+	result := sm.items[1].Action()().(apiResultMsg)
+	if result.err != nil {
+		t.Fatalf("unexpected error: %v", result.err)
+	}
+	if !strings.Contains(rolledBackPath, "/wlan1") {
+		t.Errorf("expected rollback for wlan1, got path %q", rolledBackPath)
+	}
+}
+
 // --- TUI-TEST-6: API error tests ---
 
 func TestActionNetworkDeleteStaticIP_APIError(t *testing.T) {
@@ -543,10 +658,11 @@ func TestActionNetworkSetDNS_EmptyNameservers(t *testing.T) {
 
 // --- Sanitized ifName validation ---
 
-func TestActionNetworkSetStaticIP_SanitizesPrompt(t *testing.T) {
+func TestActionNetworkSetStaticIP_FiltersInvalidNames(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode([]NetworkInterface{
 			{Name: "eth0\x1b[31m", MAC: "aa:bb:cc:dd:ee:ff", IP: "10.0.0.1", State: "up"},
+			{Name: "eth1", MAC: "aa:bb:cc:dd:ee:00", IP: "10.0.0.2", State: "up"},
 		})
 	}))
 	defer srv.Close()
@@ -557,20 +673,27 @@ func TestActionNetworkSetStaticIP_SanitizesPrompt(t *testing.T) {
 	msg := cmd()
 
 	sm := msg.(subMenuMsg)
-	item := sm.items[0]
-	innerCmd := item.Action()
-	innerMsg := innerCmd()
-
-	input := innerMsg.(editInputMsg)
-	if strings.Contains(input.prompt, "\x1b") {
-		t.Errorf("prompt should not contain escape sequences: %q", input.prompt)
+	// Only eth1 + Back should remain; the ANSI-injected name is filtered.
+	validItems := 0
+	for _, item := range sm.items {
+		if item.Title == "Back" {
+			continue
+		}
+		validItems++
+		if strings.Contains(item.Title, "\x1b") {
+			t.Errorf("filtered interface should not appear: %q", item.Title)
+		}
+	}
+	if validItems != 1 {
+		t.Errorf("expected 1 valid interface, got %d", validItems)
 	}
 }
 
-func TestActionNetworkDeleteStaticIP_SanitizesConfirmMsg(t *testing.T) {
+func TestActionNetworkDeleteStaticIP_FiltersInvalidNames(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode([]NetworkInterface{
 			{Name: "eth0\x1b[31m", MAC: "aa:bb:cc:dd:ee:ff", IP: "10.0.0.1", State: "up"},
+			{Name: "eth1", MAC: "aa:bb:cc:dd:ee:00", IP: "10.0.0.2", State: "up"},
 		})
 	}))
 	defer srv.Close()
@@ -581,16 +704,26 @@ func TestActionNetworkDeleteStaticIP_SanitizesConfirmMsg(t *testing.T) {
 	msg := cmd()
 
 	sm := msg.(subMenuMsg)
-	item := sm.items[0]
-	if strings.Contains(item.ConfirmMsg, "\x1b") {
-		t.Errorf("ConfirmMsg should not contain escape sequences: %q", item.ConfirmMsg)
+	validItems := 0
+	for _, item := range sm.items {
+		if item.Title == "Back" {
+			continue
+		}
+		validItems++
+		if strings.Contains(item.ConfirmMsg, "\x1b") {
+			t.Errorf("ConfirmMsg should not contain escape sequences: %q", item.ConfirmMsg)
+		}
+	}
+	if validItems != 1 {
+		t.Errorf("expected 1 valid interface, got %d", validItems)
 	}
 }
 
-func TestActionNetworkRollbackInterface_SanitizesConfirmMsg(t *testing.T) {
+func TestActionNetworkRollbackInterface_FiltersInvalidNames(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode([]NetworkInterface{
 			{Name: "eth0\x1b[31m", MAC: "aa:bb:cc:dd:ee:ff", IP: "10.0.0.1", State: "up"},
+			{Name: "eth1", MAC: "aa:bb:cc:dd:ee:00", IP: "10.0.0.2", State: "up"},
 		})
 	}))
 	defer srv.Close()
@@ -601,9 +734,18 @@ func TestActionNetworkRollbackInterface_SanitizesConfirmMsg(t *testing.T) {
 	msg := cmd()
 
 	sm := msg.(subMenuMsg)
-	item := sm.items[0]
-	if strings.Contains(item.ConfirmMsg, "\x1b") {
-		t.Errorf("ConfirmMsg should not contain escape sequences: %q", item.ConfirmMsg)
+	validItems := 0
+	for _, item := range sm.items {
+		if item.Title == "Back" {
+			continue
+		}
+		validItems++
+		if strings.Contains(item.ConfirmMsg, "\x1b") {
+			t.Errorf("ConfirmMsg should not contain escape sequences: %q", item.ConfirmMsg)
+		}
+	}
+	if validItems != 1 {
+		t.Errorf("expected 1 valid interface, got %d", validItems)
 	}
 }
 

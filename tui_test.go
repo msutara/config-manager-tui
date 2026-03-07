@@ -2119,7 +2119,7 @@ func TestHandleInputKey_NetworkStaticIP_EmptyAddress(t *testing.T) {
 	m := New(nil)
 	m.screen = screenInput
 	m.inputBuffer = ""
-	m.inputKey = "network.static_ip.eth0"
+	m.inputKey = inputKeyNetworkStaticIPPrefix + "eth0"
 	m.inputPlugin = "network"
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -2136,7 +2136,7 @@ func TestHandleInputKey_NetworkStaticIP_NoCIDR(t *testing.T) {
 	m := New(nil)
 	m.screen = screenInput
 	m.inputBuffer = "192.168.1.10"
-	m.inputKey = "network.static_ip.eth0"
+	m.inputKey = inputKeyNetworkStaticIPPrefix + "eth0"
 	m.inputPlugin = "network"
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -2160,20 +2160,37 @@ func TestHandleInputKey_NetworkStaticIP_Valid(t *testing.T) {
 	m.api = NewAPIClient(srv.URL)
 	m.screen = screenInput
 	m.inputBuffer = "192.168.1.10/24"
-	m.inputKey = "network.static_ip.eth0"
+	m.inputKey = inputKeyNetworkStaticIPPrefix + "eth0"
 	m.inputPlugin = "network"
 
+	// Enter should transition to confirmation screen, not execute immediately.
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m2 := updated.(Model)
-	if !m2.loading {
-		t.Error("valid input should set loading=true")
+	if m2.screen != screenConfirm {
+		t.Fatalf("expected screenConfirm, got %d", m2.screen)
 	}
-	if cmd == nil {
-		t.Fatal("valid input should return a non-nil cmd")
+	if cmd != nil {
+		t.Error("confirmation screen should not produce a cmd")
+	}
+	if m2.confirmAction == nil {
+		t.Fatal("confirmAction should be set")
+	}
+	if !strings.Contains(m2.confirmMsg, "192.168.1.10/24") || !strings.Contains(m2.confirmMsg, "eth0") {
+		t.Errorf("confirmMsg should mention address and interface, got: %s", m2.confirmMsg)
+	}
+
+	// Simulate pressing "y" to confirm.
+	updated2, cmd2 := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	m3 := updated2.(Model)
+	if !m3.loading {
+		t.Error("after confirm, loading should be true")
+	}
+	if cmd2 == nil {
+		t.Fatal("after confirm, should return a non-nil cmd")
 	}
 
 	// Execute the closure and assert the apiResultMsg.
-	msg := cmd()
+	msg := cmd2()
 	result, ok := msg.(apiResultMsg)
 	if !ok {
 		t.Fatalf("expected apiResultMsg, got %T", msg)
@@ -2186,6 +2203,46 @@ func TestHandleInputKey_NetworkStaticIP_Valid(t *testing.T) {
 	}
 	if !strings.Contains(result.detail, "Static IP set for eth0") {
 		t.Errorf("detail should mention eth0, got: %s", result.detail)
+	}
+}
+
+func TestHandleInputKey_NetworkStaticIP_Cancel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("API should not be called on cancel; got %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+
+	m := New(nil)
+	m.api = NewAPIClient(srv.URL)
+	m.screen = screenInput
+	m.inputBuffer = "192.168.1.10/24"
+	m.inputKey = inputKeyNetworkStaticIPPrefix + "eth0"
+	m.inputPlugin = "network"
+
+	// Enter should transition to confirmation screen.
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updated.(Model)
+	if m2.screen != screenConfirm {
+		t.Fatalf("expected screenConfirm, got %d", m2.screen)
+	}
+	if cmd != nil {
+		t.Error("Enter should transition to confirm, not return a cmd")
+	}
+
+	// Simulate pressing "n" to cancel.
+	updated2, cmd2 := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	m3 := updated2.(Model)
+	if m3.screen == screenConfirm {
+		t.Error("after cancel, screen should not remain on screenConfirm")
+	}
+	if m3.loading {
+		t.Error("after cancel, loading should be false")
+	}
+	if cmd2 != nil {
+		t.Error("after cancel, cmd should be nil")
+	}
+	if m3.confirmAction != nil {
+		t.Error("after cancel, confirmAction should be cleared")
 	}
 }
 
@@ -2202,10 +2259,24 @@ func TestHandleInputKey_NetworkStaticIP_APIError(t *testing.T) {
 	m.api = NewAPIClient(srv.URL)
 	m.screen = screenInput
 	m.inputBuffer = "192.168.1.10/24"
-	m.inputKey = "network.static_ip.eth0"
+	m.inputKey = inputKeyNetworkStaticIPPrefix + "eth0"
 	m.inputPlugin = "network"
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// Enter should transition to confirmation screen.
+	updated, enterCmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updated.(Model)
+	if m2.screen != screenConfirm {
+		t.Fatalf("expected screenConfirm, got %d", m2.screen)
+	}
+	if enterCmd != nil {
+		t.Error("Enter should transition to confirm, not return a cmd")
+	}
+	if m2.confirmAction == nil {
+		t.Fatal("confirmAction should be set")
+	}
+
+	// Simulate pressing "y" to confirm.
+	_, cmd := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
 	if cmd == nil {
 		t.Fatal("expected non-nil cmd")
 	}
@@ -2229,7 +2300,7 @@ func TestHandleInputKey_NetworkDNS_Empty(t *testing.T) {
 	m := New(nil)
 	m.screen = screenInput
 	m.inputBuffer = ""
-	m.inputKey = "network.dns"
+	m.inputKey = inputKeyNetworkDNS
 	m.inputPlugin = "network"
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -2246,7 +2317,7 @@ func TestHandleInputKey_NetworkDNS_OnlyCommas(t *testing.T) {
 	m := New(nil)
 	m.screen = screenInput
 	m.inputBuffer = ",,,"
-	m.inputKey = "network.dns"
+	m.inputKey = inputKeyNetworkDNS
 	m.inputPlugin = "network"
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -2270,20 +2341,37 @@ func TestHandleInputKey_NetworkDNS_Valid(t *testing.T) {
 	m.api = NewAPIClient(srv.URL)
 	m.screen = screenInput
 	m.inputBuffer = "8.8.8.8, 1.1.1.1"
-	m.inputKey = "network.dns"
+	m.inputKey = inputKeyNetworkDNS
 	m.inputPlugin = "network"
 
+	// Enter should transition to confirmation screen, not execute immediately.
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m2 := updated.(Model)
-	if !m2.loading {
-		t.Error("valid DNS input should set loading=true")
+	if m2.screen != screenConfirm {
+		t.Fatalf("expected screenConfirm, got %d", m2.screen)
 	}
-	if cmd == nil {
-		t.Fatal("valid DNS input should return a non-nil cmd")
+	if cmd != nil {
+		t.Error("confirmation screen should not produce a cmd")
+	}
+	if m2.confirmAction == nil {
+		t.Fatal("confirmAction should be set")
+	}
+	if !strings.Contains(m2.confirmMsg, "8.8.8.8") {
+		t.Errorf("confirmMsg should mention DNS servers, got: %s", m2.confirmMsg)
+	}
+
+	// Simulate pressing "y" to confirm.
+	updated2, cmd2 := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	m3 := updated2.(Model)
+	if !m3.loading {
+		t.Error("after confirm, loading should be true")
+	}
+	if cmd2 == nil {
+		t.Fatal("after confirm, should return a non-nil cmd")
 	}
 
 	// Execute the closure and assert the apiResultMsg.
-	msg := cmd()
+	msg := cmd2()
 	result, ok := msg.(apiResultMsg)
 	if !ok {
 		t.Fatalf("expected apiResultMsg, got %T", msg)
@@ -2296,6 +2384,46 @@ func TestHandleInputKey_NetworkDNS_Valid(t *testing.T) {
 	}
 	if !strings.Contains(result.detail, "DNS servers updated") {
 		t.Errorf("detail should mention DNS update, got: %s", result.detail)
+	}
+}
+
+func TestHandleInputKey_NetworkDNS_Cancel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("API should not be called on cancel; got %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+
+	m := New(nil)
+	m.api = NewAPIClient(srv.URL)
+	m.screen = screenInput
+	m.inputBuffer = "8.8.8.8"
+	m.inputKey = inputKeyNetworkDNS
+	m.inputPlugin = "network"
+
+	// Enter should transition to confirmation screen.
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updated.(Model)
+	if m2.screen != screenConfirm {
+		t.Fatalf("expected screenConfirm, got %d", m2.screen)
+	}
+	if cmd != nil {
+		t.Error("Enter should transition to confirm, not return a cmd")
+	}
+
+	// Simulate pressing "n" to cancel.
+	updated2, cmd2 := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	m3 := updated2.(Model)
+	if m3.screen == screenConfirm {
+		t.Error("after cancel, screen should not remain on screenConfirm")
+	}
+	if m3.loading {
+		t.Error("after cancel, loading should be false")
+	}
+	if cmd2 != nil {
+		t.Error("after cancel, cmd should be nil")
+	}
+	if m3.confirmAction != nil {
+		t.Error("after cancel, confirmAction should be cleared")
 	}
 }
 
@@ -2312,10 +2440,24 @@ func TestHandleInputKey_NetworkDNS_APIError(t *testing.T) {
 	m.api = NewAPIClient(srv.URL)
 	m.screen = screenInput
 	m.inputBuffer = "8.8.8.8"
-	m.inputKey = "network.dns"
+	m.inputKey = inputKeyNetworkDNS
 	m.inputPlugin = "network"
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// Enter should transition to confirmation screen.
+	updated, enterCmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updated.(Model)
+	if m2.screen != screenConfirm {
+		t.Fatalf("expected screenConfirm, got %d", m2.screen)
+	}
+	if enterCmd != nil {
+		t.Error("Enter should transition to confirm, not return a cmd")
+	}
+	if m2.confirmAction == nil {
+		t.Fatal("confirmAction should be set")
+	}
+
+	// Simulate pressing "y" to confirm.
+	_, cmd := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
 	if cmd == nil {
 		t.Fatal("expected non-nil cmd")
 	}

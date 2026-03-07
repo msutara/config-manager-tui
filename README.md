@@ -63,7 +63,7 @@ the Config Manager API and plugin registry:
   `validPluginName` (`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`), rejecting any
   names that could be used to construct malicious API paths.
 - **Interface name validation** — Network interface names are matched against
-  `validIfaceName` (`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`), preventing path
+  `validIfaceName` (`^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,14}$`), preventing path
   traversal, null bytes, and injection via interface name parameters in
   network write operations.
 - **Route prefix validation** — Plugin route prefixes received from the

@@ -460,8 +460,9 @@ func (c *APIClient) GetNetworkStatus() (*NetworkStatus, error) {
 	return &s, nil
 }
 
-// validIfaceName matches safe interface names (alphanumeric, hyphens, dots — e.g. eth0, wlan0, br-lan).
-var validIfaceName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._:-]*$`)
+// validIfaceName matches safe interface names (alphanumeric plus hyphens, dots, underscores, and colons for alias interfaces).
+// Linux limits interface names to 15 characters (IFNAMSIZ-1).
+var validIfaceName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,14}$`)
 
 // withDryRun appends the dry_run=true query parameter when dryRun is true.
 func withDryRun(path string, dryRun bool) string {

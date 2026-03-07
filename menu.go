@@ -599,7 +599,7 @@ func actionNetworkMenu(api *APIClient) func() tea.Cmd {
 					{Title: "List Interfaces", Description: "Show network interfaces", Action: actionNetworkInterfaces(api)},
 					{Title: "Network Status", Description: "Overall connectivity status", Action: actionNetworkStatus(api)},
 					{Title: "DNS Settings", Description: "View DNS configuration", Action: actionNetworkDNS(api)},
-					{Title: "──── Actions ────", Description: "", Action: func() tea.Cmd { return nil }},
+					{Title: "──── Actions ────", Description: ""},
 					{Title: "Set Static IP", Description: "Configure static IP for an interface", Action: actionNetworkSetStaticIP(api)},
 					{Title: "Set DNS Servers", Description: "Configure DNS nameservers", Action: actionNetworkSetDNS(api)},
 					{Title: "Delete Static IP", Description: "Remove static IP, revert to DHCP", Action: actionNetworkDeleteStaticIP(api)},
@@ -710,6 +710,9 @@ func actionNetworkSetStaticIP(api *APIClient) func() tea.Cmd {
 			items := make([]MenuItem, 0, len(ifaces)+1)
 			for _, iface := range ifaces {
 				ifName := iface.Name
+				if !validIfaceName.MatchString(ifName) {
+					continue
+				}
 				currentIP := iface.IP
 				desc := fmt.Sprintf("State: %s  IP: %s", sanitizeText(iface.State), sanitizeText(iface.IP))
 				items = append(items, MenuItem{
@@ -726,6 +729,9 @@ func actionNetworkSetStaticIP(api *APIClient) func() tea.Cmd {
 						}
 					},
 				})
+			}
+			if len(items) == 0 {
+				return apiResultMsg{err: fmt.Errorf("no valid network interfaces found")}
 			}
 			items = append(items, MenuItem{
 				Title:       "Back",
@@ -773,6 +779,9 @@ func actionNetworkDeleteStaticIP(api *APIClient) func() tea.Cmd {
 			items := make([]MenuItem, 0, len(ifaces)+1)
 			for _, iface := range ifaces {
 				ifName := iface.Name
+				if !validIfaceName.MatchString(ifName) {
+					continue
+				}
 				desc := fmt.Sprintf("State: %s  IP: %s", sanitizeText(iface.State), sanitizeText(iface.IP))
 				items = append(items, MenuItem{
 					Title:        sanitizeText(ifName),
@@ -790,6 +799,9 @@ func actionNetworkDeleteStaticIP(api *APIClient) func() tea.Cmd {
 						}
 					},
 				})
+			}
+			if len(items) == 0 {
+				return apiResultMsg{err: fmt.Errorf("no valid network interfaces found")}
 			}
 			items = append(items, MenuItem{
 				Title:       "Back",
@@ -815,6 +827,9 @@ func actionNetworkRollbackInterface(api *APIClient) func() tea.Cmd {
 			items := make([]MenuItem, 0, len(ifaces)+1)
 			for _, iface := range ifaces {
 				ifName := iface.Name
+				if !validIfaceName.MatchString(ifName) {
+					continue
+				}
 				desc := fmt.Sprintf("State: %s  IP: %s", sanitizeText(iface.State), sanitizeText(iface.IP))
 				items = append(items, MenuItem{
 					Title:        sanitizeText(ifName),
@@ -832,6 +847,9 @@ func actionNetworkRollbackInterface(api *APIClient) func() tea.Cmd {
 						}
 					},
 				})
+			}
+			if len(items) == 0 {
+				return apiResultMsg{err: fmt.Errorf("no valid network interfaces found")}
 			}
 			items = append(items, MenuItem{
 				Title:       "Back",

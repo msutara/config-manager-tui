@@ -4,6 +4,7 @@ package tui
 
 import (
 	"fmt"
+	"net/netip"
 	"sort"
 	"strings"
 	"time"
@@ -402,7 +403,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				stale := m.menuItems // fallback: keep current items
 				screenTitle := m.screenTitle
 				return m, func() tea.Msg {
-					// Pick the correct menu builder based on the sub-menu title.
+					// TODO: replace title-based menu matching with a builder ID or plugin name in menuState
 					var builder func(*APIClient) func() tea.Cmd
 					switch screenTitle {
 					case "Network Manager",
@@ -520,20 +521,24 @@ func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.statusMsg = "Address cannot be empty"
 				return m, nil
 			}
-			if !strings.Contains(value, "/") {
+			if _, err := netip.ParsePrefix(value); err != nil {
 				m.statusMsg = "Address must be in CIDR format (e.g. 192.168.1.10/24)"
 				return m, nil
 			}
-			m.loading = true
-			m.statusMsg = "Applying…"
-			return m, func() tea.Msg {
-				res, err := api.SetStaticIP(ifaceName, StaticIPConfig{Address: value}, false)
-				if err != nil {
-					return apiResultMsg{err: err}
+			m.confirmTitle = "Set Static IP?"
+			m.confirmMsg = fmt.Sprintf("Apply static IP %s to %s?", sanitizeText(value), sanitizeText(ifaceName))
+			m.confirmAction = func() tea.Cmd {
+				return func() tea.Msg {
+					res, err := api.SetStaticIP(ifaceName, StaticIPConfig{Address: value}, false)
+					if err != nil {
+						return apiResultMsg{err: err}
+					}
+					detail := formatNetworkWriteResult(fmt.Sprintf("Static IP set for %s", ifaceName), res)
+					return apiResultMsg{detail: detail, refreshMenu: true}
 				}
-				detail := formatNetworkWriteResult(fmt.Sprintf("Static IP set for %s", ifaceName), res)
-				return apiResultMsg{detail: detail, refreshMenu: true}
 			}
+			m.screen = screenConfirm
+			return m, nil
 		}
 
 		// Network DNS — key: "network.dns"
@@ -554,16 +559,20 @@ func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.statusMsg = "At least one DNS server required"
 				return m, nil
 			}
-			m.loading = true
-			m.statusMsg = "Applying…"
-			return m, func() tea.Msg {
-				res, err := api.SetDNS(DNSWriteConfig{Nameservers: cleaned}, false)
-				if err != nil {
-					return apiResultMsg{err: err}
+			m.confirmTitle = "Set DNS Servers?"
+			m.confirmMsg = fmt.Sprintf("Set DNS servers to %s?", sanitizeText(strings.Join(cleaned, ", ")))
+			m.confirmAction = func() tea.Cmd {
+				return func() tea.Msg {
+					res, err := api.SetDNS(DNSWriteConfig{Nameservers: cleaned}, false)
+					if err != nil {
+						return apiResultMsg{err: err}
+					}
+					detail := formatNetworkWriteResult("DNS servers updated", res)
+					return apiResultMsg{detail: detail, refreshMenu: true}
 				}
-				detail := formatNetworkWriteResult("DNS servers updated", res)
-				return apiResultMsg{detail: detail, refreshMenu: true}
 			}
+			m.screen = screenConfirm
+			return m, nil
 		}
 
 		m.loading = true

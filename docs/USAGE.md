@@ -74,7 +74,7 @@ its own set of menu actions:
   available), View Logs, View Settings, Edit Schedule, Toggle Auto-Security,
   Change Security Source
 - **Network Manager** — List Interfaces, Network Status, DNS Settings, Set
-  Static IP, Set DNS, Delete Static IP, Rollback Interface, Rollback DNS
+  Static IP, Set DNS Servers, Delete Static IP, Rollback Interface, Rollback DNS
 
 Each submenu includes a "Back" item to return to the main menu. You can also
 press esc, q, or backspace to go back.
@@ -95,7 +95,7 @@ configuration on the device:
 | Action | Description |
 | --- | --- |
 | Set Static IP | Select an interface, then enter a CIDR address (e.g. `192.168.1.10/24`) |
-| Set DNS | Edit the comma-separated list of DNS nameservers |
+| Set DNS Servers | Edit the comma-separated list of DNS nameservers |
 | Delete Static IP | Select an interface to remove its static IP assignment |
 | Rollback Interface | Select an interface to revert to its previous configuration |
 | Rollback DNS | Revert DNS settings to the previous configuration |
