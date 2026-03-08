@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -55,6 +56,52 @@ func modeBadge(mode ConnectionMode, th Theme) string {
 		return th.ConnBadgeStyle.Render(th.ConnBadgeText)
 	}
 	return th.StandBadgeStyle.Render(th.StandBadgeText)
+}
+
+// formatJobHistory renders a table-like view of job execution history.
+func formatJobHistory(jobID string, runs []JobRun) string {
+	if len(runs) == 0 {
+		return fmt.Sprintf("Job History: %s\n\nNo executions recorded.", sanitizeText(jobID))
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Job History: %s\n\n", sanitizeText(jobID))                       //nolint:errcheck // writes to strings.Builder
+	fmt.Fprintf(&b, "%-4s  %-20s  %-10s  %s\n", "  ", "Started", "Duration", "Error") //nolint:errcheck // writes to strings.Builder
+	b.WriteString(strings.Repeat("─", 60) + "\n")                                     //nolint:errcheck // writes to strings.Builder
+
+	for _, r := range runs {
+		icon := "•"
+		switch r.Status {
+		case "completed":
+			icon = "✓"
+		case "failed":
+			icon = "✗"
+		case "running":
+			icon = "⟳"
+		}
+
+		started := sanitizeText(r.StartedAt)
+		if utf8.RuneCountInString(started) > 19 {
+			started = string([]rune(started)[:19])
+		}
+
+		duration := sanitizeText(r.Duration)
+		if duration == "" {
+			duration = "-"
+		}
+
+		errMsg := "-"
+		if r.Error != "" {
+			errMsg = sanitizeText(r.Error)
+			if utf8.RuneCountInString(errMsg) > 30 {
+				errMsg = string([]rune(errMsg)[:30]) + "…"
+			}
+		}
+
+		fmt.Fprintf(&b, "%-4s  %-20s  %-10s  %s\n", icon, started, duration, errMsg) //nolint:errcheck // writes to strings.Builder
+	}
+
+	return b.String()
 }
 
 // renderMainMenu renders the list of menu items with a cursor indicator.

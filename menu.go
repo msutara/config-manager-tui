@@ -338,6 +338,7 @@ func actionUpdateMenu(api *APIClient) func() tea.Cmd {
 
 			items = append(items,
 				MenuItem{Title: "View Logs", Description: "Recent update activity", Action: actionUpdateLogs(api)},
+				MenuItem{Title: "Job History", Description: "View execution history", Action: actionJobHistory(api, "update.full")},
 			)
 
 			// --- Settings section ---
@@ -880,6 +881,20 @@ func actionNetworkRollbackDNS(api *APIClient) func() tea.Cmd {
 			}
 			detail := formatNetworkWriteResult("DNS configuration rolled back", res)
 			return apiResultMsg{detail: detail, refreshMenu: true}
+		}
+	}
+}
+
+// --- Job History ---
+
+func actionJobHistory(api *APIClient, jobID string) func() tea.Cmd {
+	return func() tea.Cmd {
+		return func() tea.Msg {
+			runs, err := api.ListJobRuns(jobID, 20, 0)
+			if err != nil {
+				return apiResultMsg{err: err}
+			}
+			return apiResultMsg{detail: formatJobHistory(jobID, runs)}
 		}
 	}
 }

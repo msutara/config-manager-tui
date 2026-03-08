@@ -235,3 +235,133 @@ func TestRenderInputFooter_Standalone(t *testing.T) {
 		t.Error("input footer should contain standalone badge")
 	}
 }
+
+// ---------- formatJobHistory tests ----------
+
+func TestFormatJobHistory(t *testing.T) {
+	end := "2026-03-02T04:00:10Z"
+	runs := []JobRun{
+		{
+			JobID:     "update.full",
+			Status:    "completed",
+			StartedAt: "2026-03-02T04:00:00Z",
+			EndedAt:   &end,
+			Duration:  "10s",
+		},
+		{
+			JobID:     "update.full",
+			Status:    "failed",
+			StartedAt: "2026-03-01T04:00:00Z",
+			Duration:  "5s",
+			Error:     "package conflict",
+		},
+		{
+			JobID:     "update.full",
+			Status:    "running",
+			StartedAt: "2026-03-03T04:00:00Z",
+		},
+	}
+
+	result := formatJobHistory("update.full", runs)
+
+	if !strings.Contains(result, "Job History: update.full") {
+		t.Error("should contain title")
+	}
+	if !strings.Contains(result, "✓") {
+		t.Error("completed run should show ✓")
+	}
+	if !strings.Contains(result, "✗") {
+		t.Error("failed run should show ✗")
+	}
+	if !strings.Contains(result, "⟳") {
+		t.Error("running run should show ⟳")
+	}
+	if !strings.Contains(result, "package conflict") {
+		t.Error("failed run should show error message")
+	}
+	if !strings.Contains(result, "10s") {
+		t.Error("should show duration for completed run")
+	}
+	if !strings.Contains(result, "2026-03-02T04:00:00") {
+		t.Error("output should contain truncated timestamp")
+	}
+	if strings.Contains(result, "2026-03-02T04:00:00Z") {
+		t.Error("timestamp should be truncated — trailing Z should be removed")
+	}
+}
+
+func TestFormatJobHistory_Empty(t *testing.T) {
+	result := formatJobHistory("update.full", nil)
+	if !strings.Contains(result, "No executions recorded") {
+		t.Errorf("empty history should say no executions, got %q", result)
+	}
+	if !strings.Contains(result, "update.full") {
+		t.Error("empty history should still show job ID")
+	}
+}
+
+func TestFormatJobHistory_LongError(t *testing.T) {
+	runs := []JobRun{
+		{
+			JobID:     "update.full",
+			Status:    "failed",
+			StartedAt: "2026-03-01T04:00:00Z",
+			Duration:  "5s",
+			Error:     "this is a very long error message that should be truncated to fit in the table display",
+		},
+	}
+
+	result := formatJobHistory("update.full", runs)
+	if !strings.Contains(result, "…") {
+		t.Error("long error should be truncated with ellipsis")
+	}
+	// The original error is longer than 30 runes.
+	// Assert the tail of the original error is NOT in the output.
+	if strings.Contains(result, "table display") {
+		t.Error("long error should be truncated — tail should not appear")
+	}
+}
+
+func TestFormatJobHistory_UnknownStatus(t *testing.T) {
+	runs := []JobRun{
+		{JobID: "test.job", Status: "cancelled", StartedAt: "2026-03-02T04:00:00Z", Duration: "5s"},
+	}
+	result := formatJobHistory("test.job", runs)
+	if !strings.Contains(result, "•") {
+		t.Error("unknown status should show bullet icon •")
+	}
+}
+
+func TestFormatJobHistory_Sanitization(t *testing.T) {
+	runs := []JobRun{
+		{
+			JobID:     "test.job",
+			Status:    "failed",
+			StartedAt: "2026-03-02\x1b[31mBAD",
+			Error:     "fail\x07with\x1bbells",
+			Duration:  "5s",
+		},
+	}
+	result := formatJobHistory("inject\x1b[0m.job", runs)
+	if strings.ContainsAny(result, "\x1b\x07") {
+		t.Error("output should not contain control characters after sanitization")
+	}
+	if !strings.Contains(result, "inject") {
+		t.Error("sanitized job ID should still contain safe characters")
+	}
+}
+
+func TestFormatJobHistory_MissingDuration(t *testing.T) {
+	runs := []JobRun{
+		{
+			JobID:     "update.full",
+			Status:    "running",
+			StartedAt: "2026-03-03T04:00:00Z",
+		},
+	}
+
+	result := formatJobHistory("update.full", runs)
+	if !strings.Contains(result, "-") {
+		t.Error("missing duration should show dash")
+	}
+}

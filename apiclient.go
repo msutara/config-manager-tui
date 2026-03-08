@@ -111,7 +111,8 @@ type PluginSettingsUpdateResult struct {
 
 // --- Job run types (core scheduler) ---
 
-// JobRun represents a job execution record from GET /api/v1/jobs/{id}/runs/latest.
+// JobRun holds a job execution record returned by GET /api/v1/jobs/{id}/runs/latest
+// and GET /api/v1/jobs/{id}/runs (paginated list).
 type JobRun struct {
 	JobID     string  `json:"job_id"`
 	Status    string  `json:"status"` // "running", "completed", "failed"
@@ -422,8 +423,8 @@ func (c *APIClient) GetUpdateLogs() (*RunStatus, error) {
 
 // --- Job tracking methods ---
 
-// validJobID matches dot-separated job identifiers (e.g. "update.full").
-var validJobID = regexp.MustCompile(`^[a-z0-9]+(\.[a-z0-9]+)*$`)
+// validJobID matches dot-separated job identifiers (e.g. "update.full", "update-daily.full").
+var validJobID = regexp.MustCompile(`^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$`)
 
 // TriggerJob fires a job by ID via the core scheduler endpoint.
 func (c *APIClient) TriggerJob(jobID string) (*TriggerJobResult, error) {
@@ -441,6 +442,27 @@ func (c *APIClient) TriggerJob(jobID string) (*TriggerJobResult, error) {
 		return nil, err
 	}
 	return &r, nil
+}
+
+// ListJobRuns fetches paginated job execution history (newest-first).
+// Job IDs are either dot-separated (e.g. "update.full") matching validJobID,
+// or single-word identifiers (e.g. "cleanup") matching validPluginName.
+func (c *APIClient) ListJobRuns(jobID string, limit, offset int) ([]JobRun, error) {
+	if !validPluginName.MatchString(jobID) && !validJobID.MatchString(jobID) {
+		return nil, fmt.Errorf("invalid job ID: %q", jobID)
+	}
+	if limit <= 0 || limit > 100 {
+		return nil, fmt.Errorf("limit must be between 1 and 100, got %d", limit)
+	}
+	if offset < 0 {
+		return nil, fmt.Errorf("offset must be non-negative, got %d", offset)
+	}
+	path := fmt.Sprintf("/api/v1/jobs/%s/runs?limit=%d&offset=%d", jobID, limit, offset)
+	var runs []JobRun
+	if err := c.getJSON(path, &runs); err != nil {
+		return nil, err
+	}
+	return runs, nil
 }
 
 // GetJobRunLatest fetches the most recent execution record for a job.

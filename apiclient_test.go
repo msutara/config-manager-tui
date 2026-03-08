@@ -839,6 +839,169 @@ func TestAPIClientGetJobRunLatest_ServerError(t *testing.T) {
 	}
 }
 
+// ---------- ListJobRuns API tests ----------
+
+func TestListJobRuns(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/jobs/update.full/runs" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("limit") != "20" {
+			t.Errorf("limit = %q, want 20", r.URL.Query().Get("limit"))
+		}
+		if r.URL.Query().Get("offset") != "0" {
+			t.Errorf("offset = %q, want 0", r.URL.Query().Get("offset"))
+		}
+		end := "2026-03-02T04:00:10Z"
+		json.NewEncoder(w).Encode([]JobRun{
+			{
+				JobID:     "update.full",
+				Status:    "completed",
+				StartedAt: "2026-03-02T04:00:00Z",
+				EndedAt:   &end,
+				Duration:  "10s",
+			},
+			{
+				JobID:     "update.full",
+				Status:    "failed",
+				StartedAt: "2026-03-01T04:00:00Z",
+				Error:     "package conflict",
+				Duration:  "5s",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	runs, err := client.ListJobRuns("update.full", 20, 0)
+	if err != nil {
+		t.Fatalf("ListJobRuns: %v", err)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("runs: got %d, want 2", len(runs))
+	}
+	if runs[0].Status != "completed" {
+		t.Errorf("first run status = %q, want completed", runs[0].Status)
+	}
+	if runs[1].Status != "failed" {
+		t.Errorf("second run status = %q, want failed", runs[1].Status)
+	}
+	if runs[1].Error != "package conflict" {
+		t.Errorf("second run error = %q, want 'package conflict'", runs[1].Error)
+	}
+}
+
+func TestListJobRuns_HyphenatedJobID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/jobs/update-daily.full/runs" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode([]JobRun{})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.ListJobRuns("update-daily.full", 20, 0)
+	if err != nil {
+		t.Fatalf("hyphenated job ID should be accepted: %v", err)
+	}
+}
+
+func TestListJobRuns_Empty(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode([]JobRun{})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	runs, err := client.ListJobRuns("update.full", 20, 0)
+	if err != nil {
+		t.Fatalf("ListJobRuns: %v", err)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("runs: got %d, want 0", len(runs))
+	}
+}
+
+func TestListJobRuns_InvalidJobID(t *testing.T) {
+	client := NewAPIClient(closedTestServer())
+	_, err := client.ListJobRuns("../etc/passwd", 20, 0)
+	if err == nil {
+		t.Fatal("expected validation error for invalid job ID")
+	}
+	if !strings.Contains(err.Error(), "invalid job ID") {
+		t.Errorf("expected 'invalid job ID' error, got: %v", err)
+	}
+}
+
+func TestListJobRuns_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, `{"error":"internal"}`)
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.ListJobRuns("update.full", 20, 0)
+	if err == nil {
+		t.Fatal("expected error for 500 response")
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("error should mention status 500: %v", err)
+	}
+}
+
+func TestListJobRuns_Pagination(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("limit") != "5" {
+			t.Errorf("limit = %q, want 5", r.URL.Query().Get("limit"))
+		}
+		if r.URL.Query().Get("offset") != "10" {
+			t.Errorf("offset = %q, want 10", r.URL.Query().Get("offset"))
+		}
+		json.NewEncoder(w).Encode([]JobRun{
+			{JobID: "cleanup", Status: "completed", StartedAt: "2026-03-02T04:00:00Z", Duration: "2s"},
+		})
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	runs, err := client.ListJobRuns("cleanup", 5, 10)
+	if err != nil {
+		t.Fatalf("ListJobRuns: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("runs: got %d, want 1", len(runs))
+	}
+}
+
+func TestListJobRuns_InvalidPagination(t *testing.T) {
+	client := NewAPIClient(closedTestServer())
+
+	tests := []struct {
+		name   string
+		limit  int
+		offset int
+		errMsg string
+	}{
+		{"zero limit", 0, 0, "limit must be between"},
+		{"negative limit", -1, 0, "limit must be between"},
+		{"limit too large", 101, 0, "limit must be between"},
+		{"negative offset", 20, -1, "offset must be non-negative"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := client.ListJobRuns("update.full", tt.limit, tt.offset)
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			if !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("error = %v, want to contain %q", err, tt.errMsg)
+			}
+		})
+	}
+}
+
 func TestAPIClientUpdatePluginSetting_ValidationError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)

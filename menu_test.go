@@ -1108,3 +1108,136 @@ func TestDisplayPath(t *testing.T) {
 		}
 	}
 }
+
+// ---------- Job history action tests ----------
+
+func TestActionJobHistory_Success(t *testing.T) {
+	end := "2026-03-02T04:00:10Z"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/jobs/update.full/runs" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode([]JobRun{
+			{
+				JobID:     "update.full",
+				Status:    "completed",
+				StartedAt: "2026-03-02T04:00:00Z",
+				EndedAt:   &end,
+				Duration:  "10s",
+			},
+			{
+				JobID:     "update.full",
+				Status:    "failed",
+				StartedAt: "2026-03-01T04:00:00Z",
+				Error:     "package conflict",
+				Duration:  "5s",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	action := actionJobHistory(api, "update.full")
+	cmd := action()
+	msg := cmd()
+
+	result, ok := msg.(apiResultMsg)
+	if !ok {
+		t.Fatalf("expected apiResultMsg, got %T", msg)
+	}
+	if result.err != nil {
+		t.Fatalf("unexpected error: %v", result.err)
+	}
+	if !strings.Contains(result.detail, "Job History: update.full") {
+		t.Errorf("detail should contain title, got %q", result.detail)
+	}
+	if !strings.Contains(result.detail, "✓") {
+		t.Error("detail should contain ✓ for completed run")
+	}
+	if !strings.Contains(result.detail, "✗") {
+		t.Error("detail should contain ✗ for failed run")
+	}
+	if !strings.Contains(result.detail, "package conflict") {
+		t.Error("detail should contain error message")
+	}
+}
+
+func TestActionJobHistory_Empty(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode([]JobRun{})
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	action := actionJobHistory(api, "update.full")
+	msg := action()()
+
+	result := msg.(apiResultMsg)
+	if result.err != nil {
+		t.Fatalf("unexpected error: %v", result.err)
+	}
+	if !strings.Contains(result.detail, "No executions recorded") {
+		t.Errorf("empty history should say no executions, got %q", result.detail)
+	}
+}
+
+func TestActionJobHistory_Error(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	action := actionJobHistory(api, "update.full")
+	msg := action()()
+
+	result := msg.(apiResultMsg)
+	if result.err == nil {
+		t.Fatal("expected error for 500 response")
+	}
+}
+
+func TestUpdateMenuIncludesJobHistory(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/plugins/update/config":
+			json.NewEncoder(w).Encode(map[string]any{
+				"schedule":           "0 3 * * *",
+				"auto_security":      true,
+				"security_source":    "detected",
+				"security_available": true,
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	action := actionUpdateMenu(api)
+	msg := action()()
+	sub, ok := msg.(subMenuMsg)
+	if !ok {
+		t.Fatalf("expected subMenuMsg, got %T", msg)
+	}
+
+	found := false
+	for _, item := range sub.items {
+		if item.Title == "Job History" {
+			found = true
+			if item.Action == nil {
+				t.Error("Job History should have Action wired")
+			}
+			if item.Description != "View execution history" {
+				t.Errorf("Job History description = %q, want 'View execution history'", item.Description)
+			}
+		}
+	}
+	if !found {
+		titles := make([]string, len(sub.items))
+		for i, item := range sub.items {
+			titles[i] = item.Title
+		}
+		t.Errorf("Update menu should contain 'Job History', got titles: %v", titles)
+	}
+}
