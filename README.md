@@ -14,6 +14,9 @@ Debian-based nodes.
 - Nested submenus for interface selection (Set Static IP, Delete, Rollback)
 - Network write operations — set static IP, set DNS, delete static IP,
   rollback interface, rollback DNS with confirmation dialogs
+- **Write-policy awareness** — network write operations that are denied by
+  interface policy display a clear, actionable message instead of a raw API
+  error
 - Confirmation dialogs for destructive actions (updates, network changes)
 - Status bar showing hostname and uptime in the footer (main, sub-menu, and
   input screens)

@@ -104,7 +104,32 @@ All write operations display a confirmation dialog before executing. After a
 successful write, the menu refreshes automatically to reflect the updated
 state.
 
-## 6. Running
+## 6. Troubleshooting
+
+### "protected by write policy" Messages
+
+If a network write operation displays a message like:
+
+> interface 'eth0' is protected by write policy — check interface_policy config
+
+this means the Config Manager API rejected the operation with a 403 Forbidden
+status because the target interface (or DNS) is restricted by the
+`interface_policy` configuration in the network plugin.
+
+**To resolve:**
+
+1. Open the Config Manager core configuration file.
+2. Locate the `interface_policy` section under the network plugin settings.
+3. Verify the target interface is listed under `writable` or remove it from the
+   `read_only` list, depending on the policy model in use.
+4. Restart the Config Manager core for changes to take effect.
+5. Retry the operation in the TUI.
+
+This behaviour is by design — it prevents accidental modification of
+interfaces that are managed by other systems or marked as critical
+infrastructure.
+
+## 7. Running
 
 The TUI is not a standalone binary. It runs as part of the Config Manager
 core binary. Run the test suite with:

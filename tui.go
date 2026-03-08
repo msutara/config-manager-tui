@@ -531,6 +531,9 @@ func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return func() tea.Msg {
 					res, err := api.SetStaticIP(ifaceName, StaticIPConfig{Address: value}, false)
 					if err != nil {
+						if isPolicyDenied(err) {
+							return apiResultMsg{err: fmt.Errorf("interface '%s' is protected by write policy — check interface_policy config", ifaceName)}
+						}
 						return apiResultMsg{err: err}
 					}
 					detail := formatNetworkWriteResult(fmt.Sprintf("Static IP set for %s", ifaceName), res)
@@ -565,6 +568,9 @@ func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return func() tea.Msg {
 					res, err := api.SetDNS(DNSWriteConfig{Nameservers: cleaned}, false)
 					if err != nil {
+						if isPolicyDenied(err) {
+							return apiResultMsg{err: fmt.Errorf("DNS configuration is protected by write policy — check interface_policy config")}
+						}
 						return apiResultMsg{err: err}
 					}
 					detail := formatNetworkWriteResult("DNS servers updated", res)

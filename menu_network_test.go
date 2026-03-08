@@ -868,3 +868,117 @@ func TestActionNetworkSetDNS_FetchError(t *testing.T) {
 		t.Errorf("error %q should contain 'dns service unavailable'", result.err.Error())
 	}
 }
+
+// --- Policy denial (403) handler-level tests ---
+
+func TestActionNetworkDeleteStaticIP_PolicyDenied(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/plugins/network/interfaces" && r.Method == http.MethodGet {
+			json.NewEncoder(w).Encode([]NetworkInterface{
+				{Name: "eth0", MAC: "aa:bb:cc:dd:ee:ff", IP: "192.168.1.5", State: "up"},
+			})
+			return
+		}
+		if r.Method == http.MethodDelete {
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]any{
+				"error": map[string]any{"message": "interface 'eth0' is not allowed for write operations"},
+			})
+			return
+		}
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	cmdFn := actionNetworkDeleteStaticIP(api)
+	cmd := cmdFn()
+	msg := cmd()
+
+	sm := msg.(subMenuMsg)
+	item := sm.items[0]
+	innerCmd := item.Action()
+	innerMsg := innerCmd()
+
+	result, ok := innerMsg.(apiResultMsg)
+	if !ok {
+		t.Fatalf("expected apiResultMsg, got %T", innerMsg)
+	}
+	if result.err == nil {
+		t.Fatal("expected non-nil error for 403 policy denial")
+	}
+	if !strings.Contains(result.err.Error(), "protected by write policy") {
+		t.Errorf("error %q should contain 'protected by write policy'", result.err.Error())
+	}
+}
+
+func TestActionNetworkRollbackInterface_PolicyDenied(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/plugins/network/interfaces" && r.Method == http.MethodGet {
+			json.NewEncoder(w).Encode([]NetworkInterface{
+				{Name: "eth0", MAC: "aa:bb:cc:dd:ee:ff", IP: "192.168.1.5", State: "up"},
+			})
+			return
+		}
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]any{
+				"error": map[string]any{"message": "interface 'eth0' is not allowed for write operations"},
+			})
+			return
+		}
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	cmdFn := actionNetworkRollbackInterface(api)
+	cmd := cmdFn()
+	msg := cmd()
+
+	sm := msg.(subMenuMsg)
+	item := sm.items[0]
+	innerCmd := item.Action()
+	innerMsg := innerCmd()
+
+	result, ok := innerMsg.(apiResultMsg)
+	if !ok {
+		t.Fatalf("expected apiResultMsg, got %T", innerMsg)
+	}
+	if result.err == nil {
+		t.Fatal("expected non-nil error for 403 policy denial")
+	}
+	if !strings.Contains(result.err.Error(), "protected by write policy") {
+		t.Errorf("error %q should contain 'protected by write policy'", result.err.Error())
+	}
+}
+
+func TestActionNetworkRollbackDNS_PolicyDenied(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/plugins/network/dns/rollback" && r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]any{
+				"error": map[string]any{"message": "interface 'eth0' is not allowed for write operations"},
+			})
+			return
+		}
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+
+	api := NewAPIClient(srv.URL)
+	cmdFn := actionNetworkRollbackDNS(api)
+	cmd := cmdFn()
+	msg := cmd()
+
+	result, ok := msg.(apiResultMsg)
+	if !ok {
+		t.Fatalf("expected apiResultMsg, got %T", msg)
+	}
+	if result.err == nil {
+		t.Fatal("expected non-nil error for 403 policy denial")
+	}
+	if !strings.Contains(result.err.Error(), "protected by write policy") {
+		t.Errorf("error %q should contain 'protected by write policy'", result.err.Error())
+	}
+}

@@ -269,6 +269,30 @@ All untrusted text rendered in the terminal is passed through `sanitizeText()`
 which strips Unicode control characters (including ESC) to prevent terminal
 escape sequences from executing. Multi-line bodies use `sanitizeBody()` for similar protection.
 
-## 12. Future Extensions
+## 12. Error Handling — Write-Policy Denial
+
+When a network write operation (Set Static IP, Set DNS, Delete Static IP,
+Rollback Interface, Rollback DNS) is rejected by the API with a `403 Forbidden`
+response whose message contains `"not allowed for write operations"`, the TUI
+maps the raw API error to a user-friendly message:
+
+| Operation | Message |
+| --- | --- |
+| Set Static IP | `interface '<name>' is protected by write policy — check interface_policy config` |
+| Delete Static IP | `interface '<name>' is protected by write policy — check interface_policy config` |
+| Rollback Interface | `interface '<name>' is protected by write policy — check interface_policy config` |
+| Set DNS | `DNS configuration is protected by write policy — check interface_policy config` |
+| Rollback DNS | `DNS rollback is protected by write policy — check interface_policy config` |
+
+The detection is performed by `isPolicyDenied()` in the API client, which
+checks both the HTTP status code (403) and the presence of the
+`"not allowed for write operations"` substring in the error message. This
+two-part check ensures that future authentication-related 403 responses are
+not incorrectly classified as policy denials.
+
+Non-403 errors (e.g. 500 Internal Server Error) pass through unmodified and
+are displayed on the detail screen as-is.
+
+## 13. Future Extensions
 
 - Log viewer within the TUI.
