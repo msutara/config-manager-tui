@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -940,6 +941,115 @@ func TestFriendlyAPIError_EmptyMessage(t *testing.T) {
 	// Empty message should fall back to raw body format
 	if !strings.Contains(err.Error(), "POST /test") {
 		t.Errorf("empty message should fall back to raw format: %v", err)
+	}
+}
+
+// ---------- APIError / isPolicyDenied ----------
+
+func TestFriendlyAPIError_ReturnsAPIError(t *testing.T) {
+	body := []byte(`{"error":{"code":403,"message":"interface 'lo' is not allowed for write operations"}}`)
+	err := friendlyAPIError("PUT", "/api/v1/plugins/network/interfaces/lo", http.StatusForbidden, body)
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected *APIError, got %T", err)
+	}
+	if apiErr.StatusCode != http.StatusForbidden {
+		t.Errorf("StatusCode = %d, want %d", apiErr.StatusCode, http.StatusForbidden)
+	}
+	if apiErr.Message != "interface 'lo' is not allowed for write operations" {
+		t.Errorf("Message = %q, want %q", apiErr.Message, "interface 'lo' is not allowed for write operations")
+	}
+}
+
+func TestFriendlyAPIError_FallbackReturnsAPIError(t *testing.T) {
+	body := []byte(`not json`)
+	err := friendlyAPIError("GET", "/api/v1/node", http.StatusInternalServerError, body)
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected *APIError, got %T", err)
+	}
+	if apiErr.StatusCode != http.StatusInternalServerError {
+		t.Errorf("StatusCode = %d, want %d", apiErr.StatusCode, http.StatusInternalServerError)
+	}
+}
+
+func TestIsPolicyDenied(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil error", nil, false},
+		{"plain error", fmt.Errorf("something broke"), false},
+		{"403 APIError", &APIError{StatusCode: 403, Message: "interface 'lo' is not allowed for write operations"}, true},
+		{"400 APIError", &APIError{StatusCode: 400, Message: "bad request"}, false},
+		{"404 APIError", &APIError{StatusCode: 404, Message: "not found"}, false},
+		{"500 APIError", &APIError{StatusCode: 500, Message: "server error"}, false},
+		{"wrapped 403", fmt.Errorf("wrap: %w", &APIError{StatusCode: 403, Message: "interface 'eth0' is not allowed for write operations"}), true},
+		{"wrapped 400", fmt.Errorf("wrap: %w", &APIError{StatusCode: 400, Message: "bad"}), false},
+		{"403 auth denial", &APIError{StatusCode: 403, Message: "access denied"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isPolicyDenied(tt.err)
+			if got != tt.want {
+				t.Errorf("isPolicyDenied(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSetStaticIP_PolicyDenied(t *testing.T) {
+	h := &networkTestHandler{
+		respStatus: http.StatusForbidden,
+		respBody:   map[string]any{"error": map[string]any{"code": 403, "message": "interface 'lo' is not allowed for write operations"}},
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.SetStaticIP("lo", StaticIPConfig{Address: "10.0.0.1/24"}, false)
+	if err == nil {
+		t.Fatal("expected error for 403")
+	}
+	if !isPolicyDenied(err) {
+		t.Errorf("expected isPolicyDenied=true, got false; err=%v", err)
+	}
+}
+
+func TestDeleteStaticIP_PolicyDenied(t *testing.T) {
+	h := &networkTestHandler{
+		respStatus: http.StatusForbidden,
+		respBody:   map[string]any{"error": map[string]any{"code": 403, "message": "interface 'lo' is not allowed for write operations"}},
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.DeleteStaticIP("lo", false)
+	if err == nil {
+		t.Fatal("expected error for 403")
+	}
+	if !isPolicyDenied(err) {
+		t.Errorf("expected isPolicyDenied=true, got false; err=%v", err)
+	}
+}
+
+func TestRollbackInterface_PolicyDenied(t *testing.T) {
+	h := &networkTestHandler{
+		respStatus: http.StatusForbidden,
+		respBody:   map[string]any{"error": map[string]any{"code": 403, "message": "interface 'lo' is not allowed for write operations"}},
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.RollbackInterface("lo", false)
+	if err == nil {
+		t.Fatal("expected error for 403")
+	}
+	if !isPolicyDenied(err) {
+		t.Errorf("expected isPolicyDenied=true, got false; err=%v", err)
 	}
 }
 

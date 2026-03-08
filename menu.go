@@ -792,6 +792,9 @@ func actionNetworkDeleteStaticIP(api *APIClient) func() tea.Cmd {
 						return func() tea.Msg {
 							res, err := api.DeleteStaticIP(ifName, false)
 							if err != nil {
+								if isPolicyDenied(err) {
+									return apiResultMsg{err: fmt.Errorf("interface '%s' is protected by write policy — check interface_policy config", ifName)}
+								}
 								return apiResultMsg{err: err}
 							}
 							detail := formatNetworkWriteResult(fmt.Sprintf("Static IP removed from %s", ifName), res)
@@ -840,6 +843,9 @@ func actionNetworkRollbackInterface(api *APIClient) func() tea.Cmd {
 						return func() tea.Msg {
 							res, err := api.RollbackInterface(ifName, false)
 							if err != nil {
+								if isPolicyDenied(err) {
+									return apiResultMsg{err: fmt.Errorf("interface '%s' is protected by write policy — check interface_policy config", ifName)}
+								}
 								return apiResultMsg{err: err}
 							}
 							detail := formatNetworkWriteResult(fmt.Sprintf("Rolled back %s", ifName), res)
@@ -867,6 +873,9 @@ func actionNetworkRollbackDNS(api *APIClient) func() tea.Cmd {
 		return func() tea.Msg {
 			res, err := api.RollbackDNS(false)
 			if err != nil {
+				if isPolicyDenied(err) {
+					return apiResultMsg{err: fmt.Errorf("DNS rollback is protected by write policy — check interface_policy config")}
+				}
 				return apiResultMsg{err: err}
 			}
 			detail := formatNetworkWriteResult("DNS configuration rolled back", res)

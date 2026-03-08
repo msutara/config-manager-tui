@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -218,6 +219,27 @@ func truncateBody(b []byte) string {
 	return string(runes)
 }
 
+// APIError represents an error response from the API, preserving the HTTP
+// status code alongside the human-readable message for programmatic handling.
+type APIError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *APIError) Error() string { return e.Message }
+
+// isPolicyDenied reports whether err is a 403 Forbidden response from the API,
+// indicating the operation was rejected by an interface write policy.
+// Checks both status code and message to distinguish from other 403 causes
+// (e.g., future auth denials).
+func isPolicyDenied(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusForbidden {
+		return false
+	}
+	return strings.Contains(apiErr.Message, "not allowed for write operations")
+}
+
 // apiErrorEnvelope matches the standard error JSON from the core API:
 //
 //	{"error":{"code":"...","message":"..."}}
@@ -230,12 +252,16 @@ type apiErrorEnvelope struct {
 // friendlyAPIError extracts a human-readable message from a raw JSON error
 // body.  If the body is a well-formed error envelope with a message, only the
 // message is returned.  Otherwise it falls back to the full body (truncated).
+// The returned error is always an *APIError so callers can inspect StatusCode.
 func friendlyAPIError(method, path string, status int, body []byte) error {
 	var env apiErrorEnvelope
 	if json.Unmarshal(body, &env) == nil && env.Error.Message != "" {
-		return fmt.Errorf("%s", env.Error.Message)
+		return &APIError{StatusCode: status, Message: env.Error.Message}
 	}
-	return fmt.Errorf("%s %s: status %d: %s", method, path, status, truncateBody(body))
+	return &APIError{
+		StatusCode: status,
+		Message:    fmt.Sprintf("%s %s: status %d: %s", method, path, status, truncateBody(body)),
+	}
 }
 
 // GetPlugins fetches the plugin registry.

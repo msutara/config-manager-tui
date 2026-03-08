@@ -2474,3 +2474,101 @@ func TestHandleInputKey_NetworkDNS_APIError(t *testing.T) {
 		t.Errorf("error %q should contain 'write failed'", result.err.Error())
 	}
 }
+
+// --- Policy denial (403) handler-level tests ---
+
+func TestHandleInputKey_NetworkStaticIP_PolicyDenied(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]any{"message": "interface 'eth0' is not allowed for write operations"},
+		})
+	}))
+	defer srv.Close()
+
+	m := New(nil)
+	m.api = NewAPIClient(srv.URL)
+	m.screen = screenInput
+	m.inputBuffer = "192.168.1.10/24"
+	m.inputKey = inputKeyNetworkStaticIPPrefix + "eth0"
+	m.inputPlugin = "network"
+
+	// Enter should transition to confirmation screen.
+	updated, enterCmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updated.(Model)
+	if m2.screen != screenConfirm {
+		t.Fatalf("expected screenConfirm, got %d", m2.screen)
+	}
+	if enterCmd != nil {
+		t.Error("Enter should transition to confirm, not return a cmd")
+	}
+	if m2.confirmAction == nil {
+		t.Fatal("confirmAction should be set")
+	}
+
+	// Simulate pressing "y" to confirm.
+	_, cmd := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+
+	msg := cmd()
+	result, ok := msg.(apiResultMsg)
+	if !ok {
+		t.Fatalf("expected apiResultMsg, got %T", msg)
+	}
+	if result.err == nil {
+		t.Fatal("expected non-nil error for 403 policy denial")
+	}
+	if !strings.Contains(result.err.Error(), "protected by write policy") {
+		t.Errorf("error %q should contain 'protected by write policy'", result.err.Error())
+	}
+}
+
+func TestHandleInputKey_NetworkDNS_PolicyDenied(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]any{"message": "interface 'eth0' is not allowed for write operations"},
+		})
+	}))
+	defer srv.Close()
+
+	m := New(nil)
+	m.api = NewAPIClient(srv.URL)
+	m.screen = screenInput
+	m.inputBuffer = "8.8.8.8"
+	m.inputKey = inputKeyNetworkDNS
+	m.inputPlugin = "network"
+
+	// Enter should transition to confirmation screen.
+	updated, enterCmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updated.(Model)
+	if m2.screen != screenConfirm {
+		t.Fatalf("expected screenConfirm, got %d", m2.screen)
+	}
+	if enterCmd != nil {
+		t.Error("Enter should transition to confirm, not return a cmd")
+	}
+	if m2.confirmAction == nil {
+		t.Fatal("confirmAction should be set")
+	}
+
+	// Simulate pressing "y" to confirm.
+	_, cmd := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+
+	msg := cmd()
+	result, ok := msg.(apiResultMsg)
+	if !ok {
+		t.Fatalf("expected apiResultMsg, got %T", msg)
+	}
+	if result.err == nil {
+		t.Fatal("expected non-nil error for 403 policy denial")
+	}
+	if !strings.Contains(result.err.Error(), "protected by write policy") {
+		t.Errorf("error %q should contain 'protected by write policy'", result.err.Error())
+	}
+}
