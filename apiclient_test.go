@@ -36,6 +36,7 @@ func TestTruncateBody(t *testing.T) {
 		{"truncates long", strings.Repeat("x", 300), strings.Repeat("x", 200) + "..."},
 		{"multibyte no truncation", strings.Repeat("é", 101), strings.Repeat("é", 101)},
 		{"multibyte truncates", strings.Repeat("é", 250), strings.Repeat("é", 200) + "..."},
+		{"strips BiDi override", "safe\u202Eevil", "safeevil"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1362,6 +1363,23 @@ func TestGetRaw_RejectsOversizedResponse(t *testing.T) {
 
 	client := NewAPIClient(srv.URL)
 	_, err := client.GetRaw("/api/v1/update/log")
+	if err == nil {
+		t.Fatal("expected error for oversized response")
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Errorf("expected size limit error, got: %v", err)
+	}
+}
+
+func TestPostRaw_RejectsOversizedResponse(t *testing.T) {
+	bigBody := strings.Repeat("x", 11<<20) // 11 MB > 10 MB limit
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(bigBody)) //nolint:errcheck // test helper
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.PostRaw("/api/v1/update/apply")
 	if err == nil {
 		t.Fatal("expected error for oversized response")
 	}

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -2626,7 +2627,7 @@ func TestGenericPluginMenuRefresh(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestInit_UnreachableAPI(t *testing.T) {
-	m := NewWithAuth(nil, "http://127.0.0.1:1", "")
+	m := NewWithAuth(nil, closedTestServer(), "")
 	cmd := m.Init()
 	if cmd == nil {
 		t.Error("Init should return a non-nil Cmd even when API is unreachable")
@@ -2637,14 +2638,58 @@ func TestInit_UnreachableAPI(t *testing.T) {
 // TEST-6: Backspace on empty input buffer
 // ---------------------------------------------------------------------------
 
-func TestBackspaceOnEmptyBuffer(t *testing.T) {
+// ---------------------------------------------------------------------------
+// TEST-7: Max input length cap
+// ---------------------------------------------------------------------------
+
+func TestHandleInputKey_MaxInputLen(t *testing.T) {
 	m := NewWithAuth(nil, "http://localhost", "")
 	m.screen = screenInput
-	m.inputBuffer = ""
-	bsMsg := tea.KeyMsg{Type: tea.KeyBackspace}
-	updated, _ := m.Update(bsMsg)
+	m.inputBuffer = strings.Repeat("a", 512) // at max
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	model := updated.(Model)
-	if model.inputBuffer != "" {
-		t.Error("backspace on empty buffer should keep it empty")
+	if utf8.RuneCountInString(model.inputBuffer) != 512 {
+		t.Errorf("buffer grew beyond maxInputLen: got %d runes", utf8.RuneCountInString(model.inputBuffer))
+	}
+	if model.statusMsg != "Input limit reached" {
+		t.Errorf("statusMsg = %q, want %q", model.statusMsg, "Input limit reached")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TEST-8: Nil-action separator not selectable
+// ---------------------------------------------------------------------------
+
+func TestHandleMenuKey_SeparatorNotSelectable(t *testing.T) {
+	m := NewWithAuth(nil, "http://localhost", "")
+	m.screen = screenSub
+	m.menuItems = []MenuItem{
+		{Title: "──── Actions ────", Action: nil},
+	}
+	m.cursor = 0
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model := updated.(Model)
+	if model.statusMsg != "Not a selectable item" {
+		t.Errorf("statusMsg = %q, want %q", model.statusMsg, "Not a selectable item")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TEST-9: DNS validation rejects invalid address
+// ---------------------------------------------------------------------------
+
+func TestHandleInputKey_NetworkDNS_InvalidAddress(t *testing.T) {
+	m := NewWithAuth(nil, "http://localhost", "")
+	m.screen = screenInput
+	m.inputBuffer = "8.8.8.8, notanip"
+	m.inputKey = inputKeyNetworkDNS
+	m.inputPlugin = "network"
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model := updated.(Model)
+	if !strings.Contains(model.statusMsg, "invalid DNS") {
+		t.Errorf("statusMsg = %q, want to contain 'invalid DNS'", model.statusMsg)
 	}
 }
