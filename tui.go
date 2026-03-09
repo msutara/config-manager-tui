@@ -4,6 +4,7 @@ package tui
 
 import (
 	"fmt"
+	"log/slog"
 	"net/netip"
 	"sort"
 	"strings"
@@ -12,6 +13,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+// maxInputLen is the maximum number of runes allowed in the text input buffer.
+const maxInputLen = 512
 
 // maxPollErrors is the number of consecutive poll failures before the
 // progress screen surfaces the error to the user.
@@ -42,9 +46,10 @@ const (
 // menuState captures the items, cursor and title of a menu level so that
 // nested sub-menus can be unwound correctly.
 type menuState struct {
-	items  []MenuItem
-	cursor int
-	title  string
+	items       []MenuItem
+	cursor      int
+	title       string
+	builderName string // identifies the builder function that created this menu level
 }
 
 // Model is the main Bubble Tea model for the Config Manager TUI.
@@ -59,6 +64,7 @@ type Model struct {
 
 	screen           screen
 	screenTitle      string      // title for sub-menu / detail view
+	builderName      string      // identifies the builder that created the current sub-menu
 	detail           string      // rendered content for detail screen
 	menuStack        []menuState // stack of parent menu states for nested sub-menus
 	statusMsg        string      // transient status message
@@ -103,6 +109,10 @@ func NewWithAPI(plugins []PluginInfo, apiBaseURL string) Model {
 
 // NewWithAuth returns an initialised TUI model that sends a Bearer token
 // with every API request. Pass empty token to disable auth.
+//
+// The default connection mode is ModeStandalone. Callers that connect to an
+// external API server must call SetConnectionMode(ModeConnected) before Init()
+// so the status bar reflects the correct state.
 func NewWithAuth(plugins []PluginInfo, apiBaseURL, token string) Model {
 	m := Model{
 		api:      NewAPIClientWithToken(apiBaseURL, token),
@@ -128,6 +138,7 @@ func (m Model) Init() tea.Cmd {
 	return func() tea.Msg {
 		info, err := m.api.GetNode()
 		if err != nil {
+			slog.Warn("failed to fetch node info", "error", err)
 			return nodeInfoMsg{}
 		}
 		return nodeInfoMsg{hostname: info.Hostname, uptime: info.UptimeSeconds}
@@ -151,8 +162,9 @@ type apiResultMsg struct {
 
 // subMenuMsg tells Update to switch to a sub-menu.
 type subMenuMsg struct {
-	title string
-	items []MenuItem
+	title       string
+	items       []MenuItem
+	builderName string // builder identifier for menu refresh routing
 }
 
 // editInputMsg tells Update to switch to the text input screen.
@@ -338,14 +350,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.menuStack = append(m.menuStack, menuState{
-			items:  m.menuItems,
-			cursor: m.cursor,
-			title:  m.screenTitle,
+			items:       m.menuItems,
+			cursor:      m.cursor,
+			title:       m.screenTitle,
+			builderName: m.builderName,
 		})
 		m.menuItems = msg.items
 		m.cursor = 0
 		m.screen = screenSub
 		m.screenTitle = msg.title
+		m.builderName = msg.builderName
 		m.statusMsg = ""
 		return m, nil
 
@@ -385,34 +399,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if refresh && m.screen == screenSub && m.api != nil {
 				// If returning from a child interface picker, pop back to
 				// the parent Network Manager level before rebuilding.
-				switch m.screenTitle {
-				case "Set Static IP — Select Interface",
-					"Delete Static IP — Select Interface",
-					"Rollback Interface — Select Interface":
+				switch m.builderName {
+				case "staticip", "deletestaticip", "rollbackiface":
 					if len(m.menuStack) > 0 {
 						state := m.menuStack[len(m.menuStack)-1]
 						m.menuStack = m.menuStack[:len(m.menuStack)-1]
 						m.menuItems = state.items
 						m.cursor = state.cursor
 						m.screenTitle = state.title
+						m.builderName = state.builderName
 					}
 				}
 				m.loading = true
 				m.statusMsg = "Loading…"
 				api := m.api
 				stale := m.menuItems // fallback: keep current items
-				screenTitle := m.screenTitle
+				builderName := m.builderName
 				return m, func() tea.Msg {
-					// TODO: replace title-based menu matching with a builder ID or plugin name in menuState
-					var builder func(*APIClient) func() tea.Cmd
-					switch screenTitle {
-					case "Network Manager",
-						"Set Static IP — Select Interface",
-						"Delete Static IP — Select Interface",
-						"Rollback Interface — Select Interface":
-						builder = actionNetworkMenu
-					default:
-						builder = actionUpdateMenu
+					builder, ok := menuBuilderByName(builderName)
+					if !ok {
+						return menuRefreshMsg{items: stale}
 					}
 					inner := builder(api)()
 					raw := inner()
@@ -476,6 +482,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.statusMsg = "Loading…"
 				return m, item.Action()
 			}
+			m.statusMsg = "Not a selectable item"
 		}
 	}
 
@@ -562,6 +569,12 @@ func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.statusMsg = "At least one DNS server required"
 				return m, nil
 			}
+			for _, s := range cleaned {
+				if _, err := netip.ParseAddr(s); err != nil {
+					m.statusMsg = fmt.Sprintf("invalid DNS server address: %s", sanitizeText(s))
+					return m, nil
+				}
+			}
 			m.confirmTitle = "Set DNS Servers?"
 			m.confirmMsg = fmt.Sprintf("Set DNS servers to %s?", sanitizeText(strings.Join(cleaned, ", ")))
 			m.confirmAction = func() tea.Cmd {
@@ -598,11 +611,25 @@ func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeySpace:
+		if utf8.RuneCountInString(m.inputBuffer) >= maxInputLen {
+			m.statusMsg = "Input limit reached"
+			return m, nil
+		}
 		m.inputBuffer += " "
 		return m, nil
 	default:
 		if msg.Type == tea.KeyRunes {
-			m.inputBuffer += string(msg.Runes)
+			currentLen := utf8.RuneCountInString(m.inputBuffer)
+			if currentLen >= maxInputLen {
+				m.statusMsg = "Input limit reached"
+				return m, nil
+			}
+			remaining := maxInputLen - currentLen
+			runes := msg.Runes
+			if len(runes) > remaining {
+				runes = runes[:remaining]
+			}
+			m.inputBuffer += string(runes)
 		}
 		return m, nil
 	}
@@ -649,13 +676,16 @@ func (m *Model) goBack() {
 			m.menuItems = state.items
 			m.cursor = state.cursor
 			m.screenTitle = state.title
+			m.builderName = state.builderName
 			if len(m.menuStack) == 0 {
 				m.screen = screenMain
 				m.screenTitle = ""
+				m.builderName = ""
 			}
 		} else {
 			m.screen = screenMain
 			m.screenTitle = ""
+			m.builderName = ""
 		}
 	case screenDetail:
 		if len(m.menuStack) > 0 {
@@ -767,7 +797,7 @@ func (m Model) viewConfirm() string {
 	b.WriteString(renderHeader(m.theme))                                 //nolint:errcheck // writes to strings.Builder
 	b.WriteString("  " + m.theme.Header.Render(m.confirmTitle) + "\n\n") //nolint:errcheck // writes to strings.Builder
 	if m.confirmMsg != "" {
-		b.WriteString("  " + m.confirmMsg + "\n\n") //nolint:errcheck // writes to strings.Builder
+		b.WriteString("  " + sanitizeText(m.confirmMsg) + "\n\n") //nolint:errcheck // writes to strings.Builder
 	}
 	yes := m.theme.ConfirmYes.Render("[Y] Yes")
 	no := m.theme.ConfirmNo.Render("[N] No")
@@ -783,9 +813,9 @@ func (m Model) viewProgress() string {
 	spinner := m.theme.Spinner.Render(frame)
 	elapsed := time.Since(m.progressStart).Truncate(time.Second)
 
-	b.WriteString("  " + spinner + " " + m.theme.Header.Render(m.progressTitle) + "\n\n") //nolint:errcheck // writes to strings.Builder
-	b.WriteString(fmt.Sprintf("  Elapsed: %s\n\n", elapsed))                              //nolint:errcheck // writes to strings.Builder
-	b.WriteString("  " + m.theme.Footer.Render("Esc/q: cancel") + "\n")                   //nolint:errcheck // writes to strings.Builder
+	b.WriteString("  " + spinner + " " + m.theme.Header.Render(sanitizeText(m.progressTitle)) + "\n\n") //nolint:errcheck // writes to strings.Builder
+	b.WriteString(fmt.Sprintf("  Elapsed: %s\n\n", elapsed))                                            //nolint:errcheck // writes to strings.Builder
+	b.WriteString("  " + m.theme.Footer.Render("Esc/q: cancel") + "\n")                                 //nolint:errcheck // writes to strings.Builder
 	return b.String()
 }
 

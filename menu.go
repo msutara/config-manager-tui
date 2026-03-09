@@ -135,15 +135,24 @@ func titleCase(s string) string {
 	return strings.Join(out, " ")
 }
 
+// isBiDiControl returns true for Unicode BiDi control characters
+// (embeddings, overrides, isolates, marks, and ALM).
+func isBiDiControl(r rune) bool {
+	return unicode.Is(unicode.Bidi_Control, r)
+}
+
 // sanitizeText strips control characters from untrusted text before rendering
 // in the terminal. unicode.IsControl covers both the ASCII C0 range
 // (U+0000–U+001F, U+007F) and the Unicode C1 range (U+0080–U+009F), so ANSI
 // escape sequences and C1 control codes (e.g. CSI at U+009B) are all removed.
+// BiDi override/embedding/isolate characters are also stripped to prevent
+// terminal spoofing, while preserving ZWJ and other format characters needed
+// for emoji sequences.
 func sanitizeText(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
 	for _, r := range s {
-		if !unicode.IsControl(r) {
+		if !unicode.IsControl(r) && !isBiDiControl(r) {
 			_, _ = b.WriteRune(r) //nolint:errcheck // strings.Builder.WriteRune never fails
 		}
 	}
@@ -154,11 +163,14 @@ func sanitizeText(s string) string {
 // for readable display of multi-line API response bodies.
 // unicode.IsControl covers both C0 (U+0000–U+001F, U+007F) and C1
 // (U+0080–U+009F) ranges; newlines and tabs are explicitly allowed through.
+// BiDi override/embedding/isolate characters are also stripped to prevent
+// terminal spoofing, while preserving ZWJ and other format characters needed
+// for emoji sequences.
 func sanitizeBody(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
 	for _, r := range s {
-		if r == '\n' || r == '\t' || !unicode.IsControl(r) {
+		if r == '\n' || r == '\t' || (!unicode.IsControl(r) && !isBiDiControl(r)) {
 			_, _ = b.WriteRune(r) //nolint:errcheck // strings.Builder.WriteRune never fails
 		}
 	}
@@ -270,7 +282,7 @@ func actionGenericPlugin(api *APIClient, p PluginInfo) func() tea.Cmd {
 				},
 			})
 
-			return subMenuMsg{title: title, items: items}
+			return subMenuMsg{title: title, items: items, builderName: sanitizeText(p.Name)}
 		}
 	}
 }
@@ -390,8 +402,9 @@ func actionUpdateMenu(api *APIClient) func() tea.Cmd {
 			}})
 
 			return subMenuMsg{
-				title: "Update Manager",
-				items: items,
+				title:       "Update Manager",
+				items:       items,
+				builderName: "update",
 			}
 		}
 	}
@@ -482,6 +495,7 @@ func actionUpdateViewSettings(api *APIClient) func() tea.Cmd {
 
 			// Hide security-related keys unless explicitly available (fail-closed).
 			hideSec := map[string]bool{"auto_security": true, "security_source": true}
+			// NOTE: config is re-fetched here; consider caching if perf matters
 			if cfg, err := api.GetUpdateConfig(); err == nil {
 				if cfg.SecurityAvailable != nil && *cfg.SecurityAvailable {
 					hideSec = map[string]bool{}
@@ -595,7 +609,8 @@ func actionNetworkMenu(api *APIClient) func() tea.Cmd {
 	return func() tea.Cmd {
 		return func() tea.Msg {
 			return subMenuMsg{
-				title: "Network Manager",
+				title:       "Network Manager",
+				builderName: "network",
 				items: []MenuItem{
 					{Title: "List Interfaces", Description: "Show network interfaces", Action: actionNetworkInterfaces(api)},
 					{Title: "Network Status", Description: "Overall connectivity status", Action: actionNetworkStatus(api)},
@@ -739,7 +754,7 @@ func actionNetworkSetStaticIP(api *APIClient) func() tea.Cmd {
 				Description: "Return to network menu",
 				Action:      func() tea.Cmd { return func() tea.Msg { return subMenuMsg{} } },
 			})
-			return subMenuMsg{title: "Set Static IP — Select Interface", items: items}
+			return subMenuMsg{title: "Set Static IP — Select Interface", items: items, builderName: "staticip"}
 		}
 	}
 }
@@ -754,7 +769,7 @@ func actionNetworkSetDNS(api *APIClient) func() tea.Cmd {
 			}
 			currentServers := ""
 			if len(dns.Nameservers) > 0 {
-				currentServers = strings.Join(dns.Nameservers, ", ")
+				currentServers = sanitizeText(strings.Join(dns.Nameservers, ", "))
 			}
 			return editInputMsg{
 				prompt:     "DNS servers (comma-separated, e.g. 8.8.8.8, 1.1.1.1):",
@@ -812,7 +827,7 @@ func actionNetworkDeleteStaticIP(api *APIClient) func() tea.Cmd {
 				Description: "Return to network menu",
 				Action:      func() tea.Cmd { return func() tea.Msg { return subMenuMsg{} } },
 			})
-			return subMenuMsg{title: "Delete Static IP — Select Interface", items: items}
+			return subMenuMsg{title: "Delete Static IP — Select Interface", items: items, builderName: "deletestaticip"}
 		}
 	}
 }
@@ -863,7 +878,7 @@ func actionNetworkRollbackInterface(api *APIClient) func() tea.Cmd {
 				Description: "Return to network menu",
 				Action:      func() tea.Cmd { return func() tea.Msg { return subMenuMsg{} } },
 			})
-			return subMenuMsg{title: "Rollback Interface — Select Interface", items: items}
+			return subMenuMsg{title: "Rollback Interface — Select Interface", items: items, builderName: "rollbackiface"}
 		}
 	}
 }
@@ -900,6 +915,20 @@ func actionJobHistory(api *APIClient, jobID string) func() tea.Cmd {
 }
 
 // --- Helpers ---
+
+// menuBuilderByName returns the menu builder function for the given builder
+// name, allowing menu refresh logic to reconstruct sub-menus without
+// fragile title-based matching.
+func menuBuilderByName(name string) (func(*APIClient) func() tea.Cmd, bool) {
+	switch name {
+	case "update":
+		return actionUpdateMenu, true
+	case "network":
+		return actionNetworkMenu, true
+	default:
+		return nil, false
+	}
+}
 
 func formatUptime(seconds int) string {
 	d := seconds / 86400

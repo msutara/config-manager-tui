@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -18,6 +19,23 @@ type APIClient struct {
 	baseURL string
 	token   string
 	client  *http.Client
+}
+
+// Response body size limits for io.LimitReader protection.
+const (
+	maxJSONResponseBytes int64 = 1 << 20  // 1 MB for JSON endpoints
+	maxRawResponseBytes  int64 = 10 << 20 // 10 MB for raw endpoints
+)
+
+// String masks the bearer token to prevent accidental credential leakage in
+// logs or fmt output.
+func (c *APIClient) String() string {
+	return fmt.Sprintf("APIClient{baseURL:%q, token:[REDACTED]}", c.baseURL)
+}
+
+// GoString masks the bearer token for %#v formatting.
+func (c *APIClient) GoString() string {
+	return fmt.Sprintf("APIClient{baseURL:%q, token:[REDACTED]}", c.baseURL)
 }
 
 // NewAPIClient returns a client pointing at the given base URL.
@@ -209,8 +227,8 @@ func truncateBody(b []byte) string {
 	s := string(b)
 	runes := make([]rune, 0, maxLen)
 	for _, r := range s {
-		if unicode.IsControl(r) {
-			continue // strip all control characters (ASCII C0 + Unicode C1)
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			continue // strip all control characters (ASCII C0 + Unicode C1) and BiDi overrides (Cf)
 		}
 		runes = append(runes, r)
 		if len(runes) == maxLen {
@@ -288,13 +306,16 @@ func (c *APIClient) GetRaw(apiPath string) (string, error) {
 	}
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("request failed: %w", err)
+		return "", sanitizeTransportError(err)
 	}
 	defer resp.Body.Close()
 
-	body, readErr := io.ReadAll(resp.Body)
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxRawResponseBytes+1))
 	if readErr != nil {
-		return "", fmt.Errorf("read body %s: %w", apiPath, readErr)
+		return "", fmt.Errorf("reading response: %w", readErr)
+	}
+	if int64(len(body)) > maxRawResponseBytes {
+		return "", fmt.Errorf("response body exceeds %d byte limit", maxRawResponseBytes)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return "", friendlyAPIError("GET", apiPath, resp.StatusCode, body)
@@ -316,13 +337,16 @@ func (c *APIClient) PostRaw(apiPath string) (string, error) {
 	}
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("request failed: %w", err)
+		return "", sanitizeTransportError(err)
 	}
 	defer resp.Body.Close()
 
-	body, readErr := io.ReadAll(resp.Body)
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxRawResponseBytes+1))
 	if readErr != nil {
-		return "", fmt.Errorf("read body %s: %w", apiPath, readErr)
+		return "", fmt.Errorf("reading response: %w", readErr)
+	}
+	if int64(len(body)) > maxRawResponseBytes {
+		return "", fmt.Errorf("response body exceeds %d byte limit", maxRawResponseBytes)
 	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
 		return "", friendlyAPIError("POST", apiPath, resp.StatusCode, body)
@@ -331,6 +355,19 @@ func (c *APIClient) PostRaw(apiPath string) (string, error) {
 }
 
 // --- Core methods ---
+
+// sanitizeTransportError strips internal URLs from HTTP client errors
+// so they are not exposed to the user.
+func sanitizeTransportError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return fmt.Errorf("api request failed: %s", urlErr.Err)
+	}
+	return err
+}
 
 // GetNode fetches system information.
 func (c *APIClient) GetNode() (*NodeInfo, error) {
@@ -457,7 +494,10 @@ func (c *APIClient) ListJobRuns(jobID string, limit, offset int) ([]JobRun, erro
 	if offset < 0 {
 		return nil, fmt.Errorf("offset must be non-negative, got %d", offset)
 	}
-	path := fmt.Sprintf("/api/v1/jobs/%s/runs?limit=%d&offset=%d", jobID, limit, offset)
+	params := url.Values{}
+	params.Set("limit", strconv.Itoa(limit))
+	params.Set("offset", strconv.Itoa(offset))
+	path := fmt.Sprintf("/api/v1/jobs/%s/runs", jobID) + "?" + params.Encode()
 	var runs []JobRun
 	if err := c.getJSON(path, &runs); err != nil {
 		return nil, err
@@ -591,6 +631,9 @@ func (c *APIClient) RollbackDNS(dryRun bool) (*NetworkWriteResult, error) {
 }
 
 func (c *APIClient) getJSON(path string, out interface{}) error {
+	if err := validateAPIPath(path); err != nil {
+		return err
+	}
 	req, err := http.NewRequest(http.MethodGet, c.baseURL+path, nil)
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
@@ -600,22 +643,32 @@ func (c *APIClient) getJSON(path string, out interface{}) error {
 	}
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return sanitizeTransportError(err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort error body
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxJSONResponseBytes)) //nolint:errcheck // best-effort error body
 		return friendlyAPIError("GET", path, resp.StatusCode, body)
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxJSONResponseBytes+1))
+	if readErr != nil {
+		return fmt.Errorf("reading %s: %w", path, readErr)
+	}
+	if int64(len(body)) > maxJSONResponseBytes {
+		return fmt.Errorf("response body from %s exceeds %d byte limit", path, maxJSONResponseBytes)
+	}
+	if err := json.Unmarshal(body, out); err != nil {
 		return fmt.Errorf("decode %s: %w", path, err)
 	}
 	return nil
 }
 
 func (c *APIClient) postJSON(path, body string, out interface{}) error {
+	if err := validateAPIPath(path); err != nil {
+		return err
+	}
 	req, err := http.NewRequest(http.MethodPost, c.baseURL+path, strings.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
@@ -626,22 +679,32 @@ func (c *APIClient) postJSON(path, body string, out interface{}) error {
 	}
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return sanitizeTransportError(err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		b, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort error body
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, maxJSONResponseBytes)) //nolint:errcheck // best-effort error body
 		return friendlyAPIError("POST", path, resp.StatusCode, b)
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+	postBody, readErr := io.ReadAll(io.LimitReader(resp.Body, maxJSONResponseBytes+1))
+	if readErr != nil {
+		return fmt.Errorf("reading %s: %w", path, readErr)
+	}
+	if int64(len(postBody)) > maxJSONResponseBytes {
+		return fmt.Errorf("response body from %s exceeds %d byte limit", path, maxJSONResponseBytes)
+	}
+	if err := json.Unmarshal(postBody, out); err != nil {
 		return fmt.Errorf("decode %s: %w", path, err)
 	}
 	return nil
 }
 
 func (c *APIClient) putJSON(path, body string, out interface{}) error {
+	if err := validateAPIPath(path); err != nil {
+		return err
+	}
 	req, err := http.NewRequest(http.MethodPut, c.baseURL+path, strings.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
@@ -652,16 +715,23 @@ func (c *APIClient) putJSON(path, body string, out interface{}) error {
 	}
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return sanitizeTransportError(err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort error body
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, maxJSONResponseBytes)) //nolint:errcheck // best-effort error body
 		return friendlyAPIError("PUT", path, resp.StatusCode, b)
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+	putBody, readErr := io.ReadAll(io.LimitReader(resp.Body, maxJSONResponseBytes+1))
+	if readErr != nil {
+		return fmt.Errorf("reading %s: %w", path, readErr)
+	}
+	if int64(len(putBody)) > maxJSONResponseBytes {
+		return fmt.Errorf("response body from %s exceeds %d byte limit", path, maxJSONResponseBytes)
+	}
+	if err := json.Unmarshal(putBody, out); err != nil {
 		return fmt.Errorf("decode %s: %w", path, err)
 	}
 	return nil
@@ -671,6 +741,9 @@ func (c *APIClient) putJSON(path, body string, out interface{}) error {
 // JSON body. It is the shared implementation for putConfirmJSON,
 // deleteConfirmJSON, and postConfirmJSON.
 func (c *APIClient) doConfirmJSON(method, path string, body string, out interface{}) error {
+	if err := validateAPIPath(path); err != nil {
+		return err
+	}
 	var bodyReader io.Reader
 	if body != "" {
 		bodyReader = strings.NewReader(body)
@@ -688,16 +761,23 @@ func (c *APIClient) doConfirmJSON(method, path string, body string, out interfac
 	}
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return sanitizeTransportError(err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		b, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort error body
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, maxJSONResponseBytes)) //nolint:errcheck // best-effort error body
 		return friendlyAPIError(method, path, resp.StatusCode, b)
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+	confirmBody, readErr := io.ReadAll(io.LimitReader(resp.Body, maxJSONResponseBytes+1))
+	if readErr != nil {
+		return fmt.Errorf("reading %s: %w", path, readErr)
+	}
+	if int64(len(confirmBody)) > maxJSONResponseBytes {
+		return fmt.Errorf("response body from %s exceeds %d byte limit", path, maxJSONResponseBytes)
+	}
+	if err := json.Unmarshal(confirmBody, out); err != nil {
 		return fmt.Errorf("decode %s: %w", path, err)
 	}
 	return nil

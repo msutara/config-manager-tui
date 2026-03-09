@@ -23,6 +23,7 @@ Debian-based nodes.
 - Boolean config values displayed as ON / OFF for readability
 - Plugin endpoint paths normalised for clean menu descriptions
 - Theme system with centralised colours, glyphs, and badges (`DefaultTheme`)
+- Job history — view recent execution runs for update jobs
 
 ## Documentation
 
@@ -72,6 +73,8 @@ the Config Manager API and plugin registry:
 - **Route prefix validation** — Plugin route prefixes received from the
   registry are decoded and checked for traversal sequences and control
   characters as defense-in-depth against a compromised registry.
+- **Response body size limits** — API responses capped at 1 MB (JSON) / 10 MB
+  (raw) to prevent OOM on constrained devices.
 
 For vulnerability reporting see [SECURITY.md](SECURITY.md).
 
