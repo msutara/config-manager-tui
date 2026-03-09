@@ -228,7 +228,7 @@ func truncateBody(b []byte) string {
 	runes := make([]rune, 0, maxLen)
 	for _, r := range s {
 		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
-			continue // strip all control characters (ASCII C0 + Unicode C1) and BiDi overrides (Cf)
+			continue // strip all control characters (ASCII C0 + Unicode C1) and Unicode format characters (Cf)
 		}
 		runes = append(runes, r)
 		if len(runes) == maxLen {

@@ -1387,3 +1387,24 @@ func TestPostRaw_RejectsOversizedResponse(t *testing.T) {
 		t.Errorf("expected size limit error, got: %v", err)
 	}
 }
+
+func TestPostRawErrorSanitizesBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("\x1b[31mERROR\x1b[0m: something went wrong")) //nolint:errcheck // test helper
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.PostRaw("/api/v1/update/apply")
+	if err == nil {
+		t.Fatal("expected error from 500 response")
+	}
+	errStr := err.Error()
+	if strings.Contains(errStr, "\x1b[") {
+		t.Errorf("error string contains ANSI escape sequence: %q", errStr)
+	}
+	if !strings.Contains(errStr, "ERROR") {
+		t.Errorf("error string does not contain 'ERROR': %q", errStr)
+	}
+}

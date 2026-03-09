@@ -2632,11 +2632,12 @@ func TestInit_UnreachableAPI(t *testing.T) {
 	if cmd == nil {
 		t.Error("Init should return a non-nil Cmd even when API is unreachable")
 	}
+	// Execute the returned command to exercise the error path and ensure no panic.
+	msg := cmd()
+	if _, ok := msg.(nodeInfoMsg); !ok {
+		t.Errorf("Init() Cmd returned %T, want nodeInfoMsg", msg)
+	}
 }
-
-// ---------------------------------------------------------------------------
-// TEST-6: Backspace on empty input buffer
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // TEST-7: Max input length cap
