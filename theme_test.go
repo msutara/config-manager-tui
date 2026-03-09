@@ -530,7 +530,7 @@ glyphs:
 // ---------------------------------------------------------------------------
 
 func TestThemeFromYAML_SanitizesGlyphs(t *testing.T) {
-	// Use Unicode BiDi override chars (Cf category) — YAML allows these,
+	// Use Unicode BiDi override chars (Bidi_Control property) — YAML allows these,
 	// and sanitizeText should strip them after the SEC-1/SEC-4 fix.
 	yml := []byte("glyphs:\n  cursor: \">\u202E\"\n  connected_badge: \"OK\u202D\"\n  standalone_badge: \"OFF\u2066\"")
 	theme, err := ThemeFromYAML(yml)

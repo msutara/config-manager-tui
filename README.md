@@ -55,8 +55,9 @@ the Config Manager API and plugin registry:
 - **Input sanitization** — All API response text is passed through
   `sanitizeText` (or `sanitizeBody` for multi-line output) before terminal
   rendering. These helpers strip C0 control characters (U+0000–U+001F,
-  U+007F), Unicode C1 control codes (U+0080–U+009F), and ANSI escape
-  sequences, preventing terminal injection attacks.
+  U+007F), Unicode C1 control codes (U+0080–U+009F), ANSI escape
+  sequences, and Unicode BiDi control characters (overrides, embeddings,
+  and isolates), preventing terminal injection and text reordering attacks.
 - **Path validation** — Every API path built from user or plugin data is
   validated by `validateAPIPath`, which URL-decodes the path first and then
   checks for directory traversal sequences (including percent-encoded

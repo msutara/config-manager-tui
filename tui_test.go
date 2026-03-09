@@ -2640,7 +2640,7 @@ func TestInit_UnreachableAPI(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TEST-7: Max input length cap
+// DEV-5: Max input length cap
 // ---------------------------------------------------------------------------
 
 func TestHandleInputKey_MaxInputLen(t *testing.T) {
@@ -2655,6 +2655,27 @@ func TestHandleInputKey_MaxInputLen(t *testing.T) {
 	}
 	if model.statusMsg != "Input limit reached" {
 		t.Errorf("statusMsg = %q, want %q", model.statusMsg, "Input limit reached")
+	}
+}
+
+func TestHandleInputKey_MaxInputLen_TruncatesMultiRune(t *testing.T) {
+	m := NewWithAuth(nil, "http://localhost", "")
+	m.screen = screenInput
+	m.inputBuffer = strings.Repeat("a", 511)
+
+	updated, _ := m.Update(tea.KeyMsg{
+		Type:  tea.KeyRunes,
+		Runes: []rune("xyz"),
+	})
+	model := updated.(Model)
+
+	finalLen := utf8.RuneCountInString(model.inputBuffer)
+	if finalLen != 512 {
+		t.Fatalf("buffer length after KeyRunes: got %d runes, want 512", finalLen)
+	}
+	lastRune, _ := utf8.DecodeLastRuneInString(model.inputBuffer)
+	if lastRune != 'x' {
+		t.Errorf("last rune = %q, want %q", lastRune, 'x')
 	}
 }
 
