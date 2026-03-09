@@ -223,7 +223,10 @@ func cleanPluginPath(routePrefix, epPath string) string {
 	if strings.Contains(decoded, "%") {
 		return ""
 	}
-	// Reject control characters (NUL, newlines, C1, etc.).
+	// Reject backslashes (some proxies normalize \ to /) and control characters.
+	if strings.Contains(decoded, "\\") {
+		return ""
+	}
 	for _, r := range decoded {
 		if unicode.IsControl(r) {
 			return ""

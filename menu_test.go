@@ -122,6 +122,7 @@ func TestCleanPluginPath(t *testing.T) {
 		{"prefix control char", "/api/v1/plugins/\x00bad", "/rules", ""},
 		{"prefix C1 control", "/api/v1/plugins/\u009Bbad", "/rules", ""},
 		{"prefix invalid escape", "/api/%zz/plugins/fw", "/rules", ""},
+		{"backslash in path", "/api/v1/plugins/update", "/plugin\\subpath", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
