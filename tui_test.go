@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -537,19 +539,23 @@ func TestConnModePersistsAcrossNavigation(t *testing.T) {
 
 func TestFormatUptime(t *testing.T) {
 	tests := []struct {
+		name    string
 		seconds int
 		want    string
 	}{
-		{59, "0m"},
-		{3600, "1h 0m"},
-		{3661, "1h 1m"},
-		{90061, "1d 1h 1m"},
+		{"under_1m", 59, "0m"},
+		{"1h", 3600, "1h 0m"},
+		{"1h_1m", 3661, "1h 1m"},
+		{"1d_1h_1m", 90061, "1d 1h 1m"},
+		{"max_int32", math.MaxInt32, "24855d 3h 14m"},
 	}
 	for _, tt := range tests {
-		got := formatUptime(tt.seconds)
-		if got != tt.want {
-			t.Errorf("formatUptime(%d): got %q, want %q", tt.seconds, got, tt.want)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatUptime(tt.seconds)
+			if got != tt.want {
+				t.Errorf("formatUptime(%d): got %q, want %q", tt.seconds, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -2570,5 +2576,142 @@ func TestHandleInputKey_NetworkDNS_PolicyDenied(t *testing.T) {
 	}
 	if !strings.Contains(result.err.Error(), "protected by write policy") {
 		t.Errorf("error %q should contain 'protected by write policy'", result.err.Error())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TEST-2: Generic plugin needsMenuRefresh path
+// ---------------------------------------------------------------------------
+
+func TestGenericPluginMenuRefresh(t *testing.T) {
+	m := New(nil)
+	m.screen = screenDetail
+	m.screenTitle = "Firewall Manager"
+	m.needsMenuRefresh = true
+	m.menuStack = []menuState{{items: []MenuItem{{Title: "Parent"}}, cursor: 0, title: "Firewall Manager"}}
+	m.menuItems = []MenuItem{{Title: "Rule 1"}, {Title: "Rule 2"}}
+
+	// Dismiss the detail screen — should trigger a refresh.
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	m2 := updated.(Model)
+
+	if !m2.loading {
+		t.Fatal("loading should be true while menu refresh is in progress")
+	}
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd to perform menu refresh")
+	}
+
+	// Execute the refresh command and apply the result.
+	refreshMsg := cmd()
+	refresh, ok := refreshMsg.(menuRefreshMsg)
+	if !ok {
+		t.Fatalf("expected menuRefreshMsg, got %T", refreshMsg)
+	}
+
+	updated2, _ := m2.Update(refresh)
+	m3 := updated2.(Model)
+
+	// The screen title must remain "Firewall Manager" — it must NOT
+	// silently fall back to "Update Manager".
+	if m3.screenTitle == "Update Manager" {
+		t.Error("screenTitle silently fell back to 'Update Manager' for a generic plugin")
+	}
+	if m3.screenTitle != "Firewall Manager" {
+		t.Errorf("screenTitle = %q, want %q", m3.screenTitle, "Firewall Manager")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TEST-5: Init() error path — verify no panic
+// ---------------------------------------------------------------------------
+
+func TestInit_UnreachableAPI(t *testing.T) {
+	m := NewWithAuth(nil, closedTestServer(), "")
+	cmd := m.Init()
+	if cmd == nil {
+		t.Error("Init should return a non-nil Cmd even when API is unreachable")
+	}
+	// Execute the returned command to exercise the error path and ensure no panic.
+	msg := cmd()
+	if _, ok := msg.(nodeInfoMsg); !ok {
+		t.Errorf("Init() Cmd returned %T, want nodeInfoMsg", msg)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// DEV-5: Max input length cap
+// ---------------------------------------------------------------------------
+
+func TestHandleInputKey_MaxInputLen(t *testing.T) {
+	m := NewWithAuth(nil, "http://localhost", "")
+	m.screen = screenInput
+	m.inputBuffer = strings.Repeat("a", 512) // at max
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	model := updated.(Model)
+	if utf8.RuneCountInString(model.inputBuffer) != 512 {
+		t.Errorf("buffer grew beyond maxInputLen: got %d runes", utf8.RuneCountInString(model.inputBuffer))
+	}
+	if model.statusMsg != "Input limit reached" {
+		t.Errorf("statusMsg = %q, want %q", model.statusMsg, "Input limit reached")
+	}
+}
+
+func TestHandleInputKey_MaxInputLen_TruncatesMultiRune(t *testing.T) {
+	m := NewWithAuth(nil, "http://localhost", "")
+	m.screen = screenInput
+	m.inputBuffer = strings.Repeat("a", 511)
+
+	updated, _ := m.Update(tea.KeyMsg{
+		Type:  tea.KeyRunes,
+		Runes: []rune("xyz"),
+	})
+	model := updated.(Model)
+
+	finalLen := utf8.RuneCountInString(model.inputBuffer)
+	if finalLen != 512 {
+		t.Fatalf("buffer length after KeyRunes: got %d runes, want 512", finalLen)
+	}
+	lastRune, _ := utf8.DecodeLastRuneInString(model.inputBuffer)
+	if lastRune != 'x' {
+		t.Errorf("last rune = %q, want %q", lastRune, 'x')
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TEST-8: Nil-action separator not selectable
+// ---------------------------------------------------------------------------
+
+func TestHandleMenuKey_SeparatorNotSelectable(t *testing.T) {
+	m := NewWithAuth(nil, "http://localhost", "")
+	m.screen = screenSub
+	m.menuItems = []MenuItem{
+		{Title: "──── Actions ────", Action: nil},
+	}
+	m.cursor = 0
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model := updated.(Model)
+	if model.statusMsg != "Not a selectable item" {
+		t.Errorf("statusMsg = %q, want %q", model.statusMsg, "Not a selectable item")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TEST-9: DNS validation rejects invalid address
+// ---------------------------------------------------------------------------
+
+func TestHandleInputKey_NetworkDNS_InvalidAddress(t *testing.T) {
+	m := NewWithAuth(nil, "http://localhost", "")
+	m.screen = screenInput
+	m.inputBuffer = "8.8.8.8, notanip"
+	m.inputKey = inputKeyNetworkDNS
+	m.inputPlugin = "network"
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model := updated.(Model)
+	if !strings.Contains(model.statusMsg, "invalid DNS") {
+		t.Errorf("statusMsg = %q, want to contain 'invalid DNS'", model.statusMsg)
 	}
 }

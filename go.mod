@@ -19,7 +19,6 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
-	github.com/msutara/config-manager-core v0.4.3-0.20260308225344-7da27b1725de // indirect
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
@@ -29,6 +28,3 @@ require (
 	golang.org/x/sys v0.37.0 // indirect
 	golang.org/x/text v0.3.8 // indirect
 )
-
-// config-manager-core is not a direct Go dependency. The TUI receives plugin
-// info via the PluginInfo struct — no import of the core package is needed.

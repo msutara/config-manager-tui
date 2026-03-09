@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -35,6 +36,7 @@ func TestTruncateBody(t *testing.T) {
 		{"truncates long", strings.Repeat("x", 300), strings.Repeat("x", 200) + "..."},
 		{"multibyte no truncation", strings.Repeat("é", 101), strings.Repeat("é", 101)},
 		{"multibyte truncates", strings.Repeat("é", 250), strings.Repeat("é", 200) + "..."},
+		{"strips BiDi override", "safe\u202Eevil", "safeevil"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1312,23 +1314,97 @@ func TestGetRawErrorSanitizesBody(t *testing.T) {
 	}
 }
 
-func TestPostRawErrorSanitizesBody(t *testing.T) {
+// ---------- Size limit and transport sanitization tests ----------
+
+func TestGetJSON_RejectsOversizedResponse(t *testing.T) {
+	bigJSON := `{"hostname":"` + strings.Repeat("x", 2<<20) + `"}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("error\x1b[31m injected\x00tail")) //nolint:errcheck // test helper
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(bigJSON)) //nolint:errcheck // test helper
 	}))
 	defer srv.Close()
 
 	client := NewAPIClient(srv.URL)
-	_, err := client.PostRaw("/test")
+	var out map[string]string
+	err := client.getJSON("/api/v1/node", &out)
 	if err == nil {
-		t.Fatal("expected error for 500")
+		t.Fatal("expected error for oversized response")
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Errorf("expected size limit error, got: %v", err)
+	}
+}
+
+func TestSanitizeTransportError(t *testing.T) {
+	inner := fmt.Errorf("connection refused")
+	urlErr := &url.Error{Op: "Get", URL: "http://secret-host:9090/api/v1/node", Err: inner}
+
+	got := sanitizeTransportError(urlErr)
+	if got == nil {
+		t.Fatal("expected non-nil error")
+	}
+	if strings.Contains(got.Error(), "secret-host") {
+		t.Error("sanitized error should not contain URL")
+	}
+	if strings.Contains(got.Error(), "9090") {
+		t.Error("sanitized error should not contain port")
+	}
+	if !strings.Contains(got.Error(), "connection refused") {
+		t.Error("sanitized error should contain inner error message")
+	}
+}
+
+func TestGetRaw_RejectsOversizedResponse(t *testing.T) {
+	bigBody := strings.Repeat("x", 11<<20) // 11 MB > 10 MB limit
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(bigBody)) //nolint:errcheck // test helper
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.GetRaw("/api/v1/update/log")
+	if err == nil {
+		t.Fatal("expected error for oversized response")
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Errorf("expected size limit error, got: %v", err)
+	}
+}
+
+func TestPostRaw_RejectsOversizedResponse(t *testing.T) {
+	bigBody := strings.Repeat("x", 11<<20) // 11 MB > 10 MB limit
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(bigBody)) //nolint:errcheck // test helper
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.PostRaw("/api/v1/update/apply")
+	if err == nil {
+		t.Fatal("expected error for oversized response")
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Errorf("expected size limit error, got: %v", err)
+	}
+}
+
+func TestPostRawErrorSanitizesBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("\x1b[31mERROR\x1b[0m: something went wrong")) //nolint:errcheck // test helper
+	}))
+	defer srv.Close()
+
+	client := NewAPIClient(srv.URL)
+	_, err := client.PostRaw("/api/v1/update/apply")
+	if err == nil {
+		t.Fatal("expected error from 500 response")
 	}
 	errStr := err.Error()
-	if strings.Contains(errStr, "\x1b") {
-		t.Error("error should not contain ANSI escape")
+	if strings.Contains(errStr, "\x1b[") {
+		t.Errorf("error string contains ANSI escape sequence: %q", errStr)
 	}
-	if strings.Contains(errStr, "\x00") {
-		t.Error("error should not contain null byte")
+	if !strings.Contains(errStr, "ERROR") {
+		t.Errorf("error string does not contain 'ERROR': %q", errStr)
 	}
 }

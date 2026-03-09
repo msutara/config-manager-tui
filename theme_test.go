@@ -524,3 +524,37 @@ glyphs:
 		t.Errorf("error should mention separator_width: %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// TEST-3: ThemeFromYAML with untrusted glyph content (ANSI sequences)
+// ---------------------------------------------------------------------------
+
+func TestThemeFromYAML_SanitizesGlyphs(t *testing.T) {
+	// Use Unicode BiDi override chars (Bidi_Control property) — YAML allows these,
+	// and sanitizeText should strip them after the SEC-1/SEC-4 fix.
+	yml := []byte("glyphs:\n  cursor: \">\u202E\"\n  connected_badge: \"OK\u202D\"\n  standalone_badge: \"OFF\u2066\"")
+	theme, err := ThemeFromYAML(yml)
+	if err != nil {
+		t.Fatalf("ThemeFromYAML failed: %v", err)
+	}
+	if strings.Contains(theme.Cursor, "\u202E") {
+		t.Error("cursor glyph should not contain BiDi override characters")
+	}
+	if strings.Contains(theme.ConnBadgeText, "\u202D") {
+		t.Error("connected_badge glyph should not contain BiDi override characters")
+	}
+	if strings.Contains(theme.StandBadgeText, "\u2066") {
+		t.Error("standalone_badge glyph should not contain BiDi override characters")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TEST-7: BuiltinTheme false/unknown case
+// ---------------------------------------------------------------------------
+
+func TestBuiltinTheme_Unknown(t *testing.T) {
+	_, ok := BuiltinTheme("nonexistent")
+	if ok {
+		t.Error("BuiltinTheme should return false for unknown theme name")
+	}
+}

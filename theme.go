@@ -179,10 +179,10 @@ func ThemeFromYAML(data []byte) (Theme, error) {
 
 	if g := raw.Glyphs; g != nil {
 		if g.Cursor != nil {
-			t.Cursor = *g.Cursor
+			t.Cursor = sanitizeText(*g.Cursor)
 		}
 		if g.Separator != nil {
-			t.Separator = *g.Separator
+			t.Separator = sanitizeText(*g.Separator)
 		}
 		if g.SepWidth != nil {
 			if *g.SepWidth < 0 || *g.SepWidth > 500 {
@@ -191,10 +191,10 @@ func ThemeFromYAML(data []byte) (Theme, error) {
 			t.SepWidth = *g.SepWidth
 		}
 		if g.ConnBadgeText != nil {
-			t.ConnBadgeText = *g.ConnBadgeText
+			t.ConnBadgeText = sanitizeText(*g.ConnBadgeText)
 		}
 		if g.StandBadgeText != nil {
-			t.StandBadgeText = *g.StandBadgeText
+			t.StandBadgeText = sanitizeText(*g.StandBadgeText)
 		}
 	}
 

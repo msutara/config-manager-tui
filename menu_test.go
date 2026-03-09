@@ -41,6 +41,19 @@ func TestSanitizeText(t *testing.T) {
 		{"C1 controls", "abc\u0085\u008A\u009Bdef", "abcdef"},
 		{"tab", "col1\tcol2", "col1col2"},
 		{"empty", "", ""},
+		{"bidi LRO", "safe\u202Dtext", "safetext"},
+		{"bidi RLO", "safe\u202Eevil", "safeevil"},
+		{"bidi LRE", "test\u202Adata", "testdata"},
+		{"bidi RLE", "test\u202Bdata", "testdata"},
+		{"bidi PDF", "test\u202Cdata", "testdata"},
+		{"bidi LRI", "test\u2066data", "testdata"},
+		{"bidi RLI", "test\u2067data", "testdata"},
+		{"bidi FSI", "test\u2068data", "testdata"},
+		{"bidi PDI", "test\u2069data", "testdata"},
+		{"strips LRM", "hello\u200Eworld", "helloworld"},
+		{"strips RLM", "hello\u200Fworld", "helloworld"},
+		{"strips ALM", "hello\u061Cworld", "helloworld"},
+		{"preserves ZWJ in emoji", "👨\u200D💻", "👨\u200D💻"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -61,6 +74,18 @@ func TestSanitizeBody(t *testing.T) {
 		{"strips null", "abc\x00def", "abcdef"},
 		{"strips ansi", "\x1b[31mred\x1b[0m", "[31mred[0m"},
 		{"strips C1 controls", "abc\u0085\u009Bdef", "abcdef"},
+		{"bidi LRO", "safe\u202Dtext", "safetext"},
+		{"bidi RLO", "safe\u202Eevil", "safeevil"},
+		{"bidi LRE", "test\u202Adata", "testdata"},
+		{"bidi RLE", "test\u202Bdata", "testdata"},
+		{"bidi PDF", "test\u202Cdata", "testdata"},
+		{"bidi LRI", "test\u2066data", "testdata"},
+		{"bidi RLI", "test\u2067data", "testdata"},
+		{"bidi FSI", "test\u2068data", "testdata"},
+		{"bidi PDI", "test\u2069data", "testdata"},
+		{"strips LRM", "hello\u200Eworld", "helloworld"},
+		{"strips RLM", "hello\u200Fworld", "helloworld"},
+		{"strips ALM", "hello\u061Cworld", "helloworld"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -97,6 +122,7 @@ func TestCleanPluginPath(t *testing.T) {
 		{"prefix control char", "/api/v1/plugins/\x00bad", "/rules", ""},
 		{"prefix C1 control", "/api/v1/plugins/\u009Bbad", "/rules", ""},
 		{"prefix invalid escape", "/api/%zz/plugins/fw", "/rules", ""},
+		{"backslash in path", "/api/v1/plugins/update", "/plugin\\subpath", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

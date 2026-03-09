@@ -39,6 +39,8 @@ This project is split across multiple repositories:
   network configuration plugin
 - [config-manager-tui](https://github.com/msutara/config-manager-tui) —
   terminal UI (Bubble Tea)
+- [config-manager-web](https://github.com/msutara/config-manager-web) —
+  browser-based dashboard (htmx)
 
 ## Code of Conduct
 
